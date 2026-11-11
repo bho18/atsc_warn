@@ -1,0 +1,10 @@
+WarnBridge is newly written experimental software for a private repository.
+No publication or open-source license selection is implied by this delivery.
+No historical PBS implementation code was copied. Historical sources include
+PBS All Rights Reserved notices; no reuse permission was established.
+
+Runtime dependencies retain their upstream licenses (see uv.lock and installed
+package metadata). SiliconDust source (LGPL-2.1) was consulted for interface
+semantics only; hdhomerun_config is an external, separately installed tool.
+Synthetic fixtures are identified in tests/fixtures/README.md. Golden byte/text
+vectors were supplied by the user. No original private capture is distributed.

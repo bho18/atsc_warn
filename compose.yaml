@@ -1,0 +1,22 @@
+services:
+  warnbridge:
+    build: .
+    image: warnbridge:local
+    entrypoint: ["/bin/sh", "/app/scripts/container-start.sh"]
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - warnbridge-data:/data
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  warnbridge-data:

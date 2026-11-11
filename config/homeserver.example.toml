@@ -1,0 +1,26 @@
+# Copy to config/local.toml (ignored), then fill in explicitly before capture.
+# These are historical deployment examples, not universal receiver defaults.
+database = "data/warnbridge.db"
+bind = "127.0.0.1"
+port = 8080
+timezone = "America/Chicago"
+pid = 2321
+receiver_host = "192.168.4.159"
+tuner = 1 # EXAMPLE ONLY: check both tuners; do not assume tuner 1 is free.
+channel = "auto:7"
+udp_bind = "0.0.0.0"
+# return_ip = "REPLACE_WITH_HOMESERVER_ROUTABLE_IPV4" # Required: no guessed interface.
+udp_port = 5000
+full_multiplex = false
+capture_dir = "data/captures"
+capture_segment_bytes = 8388608
+capture_segments = 8
+max_database_bytes = 536870912
+max_rejected = 1000
+
+[limits]
+max_body = 1048576
+max_fragments = 8192
+max_pending = 16
+timeout = 30.0
+dedup_window = 10000

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cap:alert xmlns:cap="urn:oasis:names:tc:emergency:cap:1.2" xmlns:x="urn:warnbridge:synthetic">
+<cap:identifier>synthetic-001</cap:identifier><cap:sender>sender.example</cap:sender>
+<cap:sent>2020-11-30T10:00:00Z</cap:sent><cap:status>Test</cap:status>
+<cap:msgType>Alert</cap:msgType><cap:scope>Public</cap:scope>
+<cap:info><cap:language>en-US</cap:language><cap:category>Met</cap:category>
+<cap:event>Synthetic demonstration</cap:event><cap:urgency>Unknown</cap:urgency>
+<cap:severity>Unknown</cap:severity><cap:certainty>Unknown</cap:certainty>
+<cap:expires>2020-11-30T11:00:00Z</cap:expires>
+<cap:headline>&lt;script&gt;alert('x')&lt;/script&gt;</cap:headline>
+<cap:parameter><cap:valueName>WEAHandling</cap:valueName><cap:value>first</cap:value></cap:parameter>
+<cap:parameter><cap:valueName>WEAHandling</cap:valueName><cap:value>second</cap:value></cap:parameter>
+<cap:area><cap:areaDesc>Area A</cap:areaDesc><cap:polygon>36,-87 36,-86 35,-86 36,-87</cap:polygon>
+<cap:geocode><cap:valueName>SAME</cap:valueName><cap:value>047037</cap:value></cap:geocode></cap:area>
+<cap:area><cap:areaDesc>Area B</cap:areaDesc><cap:circle>36.1,-86.7 5</cap:circle></cap:area>
+<x:extension flag="keep">first<x:child/>tail</x:extension><x:extension>second</x:extension>
+</cap:info><cap:info><cap:language>es-US</cap:language><cap:event>Demostración</cap:event>
+<cap:expires>2020-11-30T11:00:00Z</cap:expires><cap:area><cap:areaDesc>Otra área</cap:areaDesc></cap:area></cap:info>
+</cap:alert>

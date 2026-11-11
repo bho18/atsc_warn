@@ -1,0 +1,6 @@
+database = "data/warnbridge.db"
+bind = "127.0.0.1"
+port = 8080
+timezone = "America/Chicago"
+pid = 2321
+# No receiver, no network API polling. Run the reconstructed replay fixture.

@@ -1,0 +1,4 @@
+database = "/data/warnbridge.db"
+bind = "0.0.0.0" # Container only; compose publishes to host loopback.
+port = 8080
+timezone = "America/Chicago"

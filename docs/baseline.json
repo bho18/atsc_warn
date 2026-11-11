@@ -1,0 +1,17 @@
+{
+  "warn_packets": 56,
+  "complete_messages": 24,
+  "crc_pass": 24,
+  "crc_fail": 0,
+  "heartbeats": 8,
+  "cmac_messages": 16,
+  "cap_messages": 0,
+  "link_tests": 16,
+  "duplicate_xml": 9,
+  "unique_xml": 7,
+  "continuity_gaps": 0,
+  "duplicate_ts_packets": 0,
+  "rejected_packets": 0,
+  "rejected_messages": 0,
+  "incomplete_messages": 0
+}

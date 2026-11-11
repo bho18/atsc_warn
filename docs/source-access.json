@@ -1,0 +1,73 @@
+{
+  "access_date_utc": "2026-11-11",
+  "results": [
+    {
+      "url": "https://info.hdhomerun.com/info/hdhomerun_config",
+      "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "url": "https://d2dtechnologies.com/d2warn/",
+      "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "url": "https://d2dtechnologies.com/wp-content/uploads/2023/08/PBS-WARN-Manual-Aug-2023-rev-11.pdf",
+      "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "url": "https://docs.oasis-open.org/emergency/cap/v1.2/CAP-v1.2-os.html",
+      "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "url": "https://docs.oasis-open.org/emergency/cap/v1.2/ipaws-profile/v1.0/cs01/cap-v1.2-ipaws-profile-cs01.html",
+      "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "url": "https://content.govdelivery.com/attachments/USDHSFEMA/2024/01/31/file_attachments/2767795/IPAWS-OPEN-v4-02-InterfaceDesignGuide_Final.pdf",
+      "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "url": "https://content.govdelivery.com/attachments/USDHSFEMA/2024/09/11/file_attachments/2994434/IPAWS-OPEN-v4-02-06_InterfaceDesignGuide_Draft.pdf",
+      "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "url": "https://webstore.ansi.org/standards/atis/atis0700037v003",
+      "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "url": "https://store.accuristech.com/products/preview/2002334",
+      "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "url": "https://www.pbs.org/about/about-pbs/contact-information/warn/",
+      "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "url": "https://nmknkohb83.execute-api.us-east-1.amazonaws.com/prod/warn_out",
+      "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "url": "https://github.com/ser401-capstone-chatgpt-WEA/SER401-Capstone-Team-3/blob/US-126/scrape_pbs_warn_api.py",
+      "status": 200,
+      "bytes": 376171,
+      "sha256": "654533734f7823dfc52eb7313867d75fe2a5c3cfe9186527576718b99b9cacc5"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Silicondust/libhdhomerun/dc48af56d3c338288765b263e57129f711dedb9b/hdhomerun_config.c",
+      "status": 200,
+      "bytes": 16135,
+      "sha256": "79c670106a723b2c1a83b763b7ed57dcfaf2d3c83521f7c29241e87f779ca4bd"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Silicondust/libhdhomerun/dc48af56d3c338288765b263e57129f711dedb9b/hdhomerun_device.c",
+      "status": 200,
+      "bytes": 43348,
+      "sha256": "ad1606e9b2cd2e2984849c80704f498742b6773f7f739488c18dca5d282f7090"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Silicondust/libhdhomerun/dc48af56d3c338288765b263e57129f711dedb9b/LICENSE",
+      "status": 200,
+      "bytes": 26461,
+      "sha256": "9b872a8a070b8ad329c4bd380fb1bf0000f564c75023ec8e1e6803f15364b9e9"
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+import tomllib
+from dataclasses import dataclass, field
+from ipaddress import IPv4Address
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+from warnbridge.transport.decoder import Limits
+
+
+@dataclass
+class Config:
+    database: str = "data/warnbridge.db"
+    bind: str = "127.0.0.1"
+    port: int = 8080
+    timezone: str = "America/Chicago"
+    pid: int = 0x0911
+    receiver_host: str | None = None
+    tuner: int | None = None
+    channel: str | None = None
+    udp_bind: str = "127.0.0.1"
+    return_ip: str | None = None
+    udp_port: int = 5000
+    full_multiplex: bool = False
+    capture_dir: str = "data/captures"
+    capture_segment_bytes: int = 8 * 1024 * 1024
+    capture_segments: int = 8
+    max_database_bytes: int = 512 * 1024 * 1024
+    max_rejected: int = 1000
+    limits: Limits = field(default_factory=Limits)
+
+    def __post_init__(self) -> None:
+        ZoneInfo(self.timezone)
+        if not 0 <= self.pid <= 0x1FFE:
+            raise ValueError("invalid PID")
+        if not 1 <= self.port <= 65535 or not 1 <= self.udp_port <= 65535:
+            raise ValueError("invalid port")
+        if self.tuner is not None and self.tuner not in (0, 1):
+            raise ValueError("CONNECT DUO tuner must be 0 or 1")
+        if self.receiver_host:
+            IPv4Address(self.receiver_host)
+        IPv4Address(self.udp_bind)
+        if self.return_ip:
+            IPv4Address(self.return_ip)
+        if min(self.capture_segments, self.max_rejected) < 1:
+            raise ValueError("retention limits must be positive")
+        if self.capture_segment_bytes < 131072 or self.max_database_bytes < 1048576:
+            raise ValueError("storage limits too small")
+
+    def require_receiver(self) -> None:
+        if not self.receiver_host or self.tuner is None or not self.channel or not self.return_ip:
+            raise ValueError(
+                "capture requires explicit receiver_host, tuner, channel and return_ip"
+            )
+
+
+def load_config(path: str | None) -> Config:
+    if path is None:
+        return Config()
+    with Path(path).open("rb") as stream:
+        raw = tomllib.load(stream)
+    if "limits" in raw:
+        raw["limits"] = Limits(**raw["limits"])
+    return Config(**raw)
