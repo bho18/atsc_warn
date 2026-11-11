@@ -93,3 +93,43 @@ umask. Concurrent API regression coverage is included.
 
 See deployment.md for exact private-capture acceptance and safe local receiver
 preflight, and sources.md for retrieval outcomes and repository privacy blocker.
+
+## Fresh-checkout and final runtime acceptance
+
+The source implementation was committed locally as `8c729c06c9174e52221e2bc6b5a54dc48c5289f6`
+on `codex/warnbridge-initial`. A complete-history Git bundle was created and
+verified, cloned into `/tmp/warnbridge-fresh`, then tested with:
+
+```sh
+git bundle verify /workspace/warnbridge-initial.bundle
+git clone /workspace/warnbridge-initial.bundle /tmp/warnbridge-fresh
+cd /tmp/warnbridge-fresh
+./scripts/setup.sh
+./scripts/validate.sh
+```
+
+Fresh checkout: **71 passed**, Ruff lint/format passed, mypy passed for 17 source
+files, reconstructed replay summary matched the four-packet result above. Setup
+used the shared package cache but a newly created checkout/venv; validation ran
+with frozen offline dependencies. This verifies no uncommitted fixture or existing
+application database is needed; it is not a claim of package installation on a
+completely offline unprovisioned machine.
+
+Final browser commands both passed:
+
+```sh
+.venv/bin/python scripts/browser_smoke.py --url http://127.0.0.1:8081 \
+  --check-cap --screenshot /tmp/warnbridge-xss.png
+.venv/bin/python scripts/browser_smoke.py
+```
+
+Port 8081 was a temporary native server containing only synthetic browser fixtures;
+it was stopped after verification. Port 8080 served the Compose demo. Both browser
+runs had zero external requests/JS errors. The hostile CAP headline rendered as
+text, without a script node or dialog. After container restart, health was healthy
+and metrics remained two messages/two observations: the demo was not re-imported.
+Final container and native test-server logs contained no errors/tracebacks.
+
+A subsequent documentation-only commit records these results. The final bundle
+includes that commit and the unchanged validated implementation. No remote push,
+PR, live endpoint polling, physical receiver test, or original-capture test occurred.
