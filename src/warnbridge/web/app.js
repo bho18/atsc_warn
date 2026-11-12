@@ -130,6 +130,7 @@ function renderAlertDetail(item) {
   const a=item.alert,body=node('div',null,'alert-body');
   alertBadges(body,item);
   metadata(body,[['Sender / gateway',a.sender],['Identifier',a.identifier],['XML sent',a.sent ? stamp(a.sent) : 'Not supplied'],['Scope',a.scope || 'Not supplied'],['Last receipt',item.last_received_at ? stamp(item.last_received_at) : 'Arrival unknown'],['Timing / references',lifecycleNames[a.lifecycle] || a.lifecycle]]);
+  if(a.note)body.append(node('h3','Message note'),node('p',a.note,'message-text'));
   if(a.infos.length) {
     const label=node('label','Language / information block','language-label'),select=node('select');select.id='alertLanguage';
     for(const [i,info] of a.infos.entries()) {const option=node('option',`${info.language} · ${info.event || `block ${i+1}`}`);option.value=String(i);select.append(option);}
@@ -144,6 +145,7 @@ function renderAlertDetail(item) {
     const section=node('section',null,'cancellation-content');section.append(node('h3','Cancellation details'));
     for(const cancellation of a.cancellations) {
       section.append(node('p',`Cancelled · ${stamp(cancellation.sent)}`));
+      if(cancellation.note)section.append(node('p',cancellation.note,'message-text'));
       for(const info of cancellation.infos) {
         const block=node('div',null,'cancellation-info');
         block.append(node('h4',`${info.language} · ${info.headline || info.event || 'Cancellation'}`));

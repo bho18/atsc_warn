@@ -182,6 +182,7 @@ def project_alert(protocol: str, fields: Tree, *, now: datetime | None = None) -
         "sender": None,
         "identifier": None,
         "sent": None,
+        "note": None,
         "infos": [],
         "lifecycle": "unknown",
         "relationships": [],
@@ -196,6 +197,7 @@ def project_alert(protocol: str, fields: Tree, *, now: datetime | None = None) -
             ("sender", "sender"),
             ("identifier", "identifier"),
             ("sent", "sent"),
+            ("note", "note"),
         ):
             result[output] = value(root, CAP, source) or None
         result["infos"] = [cap_info(c) for c in children(root, CAP, "info")]

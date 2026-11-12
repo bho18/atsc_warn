@@ -571,6 +571,8 @@ Executed locally:
   formatted as Alert, unknown content, accented/entity-decoded text, and direct
   retained-packet downloads. Screenshot inspection caught and corrected cancellation
   panel contrast against the existing dark theme.
+  A final follow-up also verifies CAP root-level notes in cancellation details,
+  alongside information blocks; the 188-test suite and lifecycle browser check pass.
 - Existing `browser_alerts_smoke.py` and `browser_maps_smoke.py`: passed against a
   synthetic replay server, including source/status filters, languages, CMAC text,
   heartbeat freshness, offline maps, controls/popups, synthetic tile responses,

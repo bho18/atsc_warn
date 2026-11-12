@@ -96,12 +96,16 @@ with tempfile.TemporaryDirectory(prefix="warnbridge-browser-") as directory:
                     b"Extra cancellation instructions: road reopened.",
                 )
             )
+            cancel = cancel.replace(b"</scope>", b"</scope><note>Cancellation root note.</note>")
             ingest(config, wrap(cancel, entries=(1,), payload_type=1))
             # Inspection stays open and refreshes its status and cancellation content.
             page.locator("#refresh").click()
             expect(original_card.locator(".lifecycle")).to_have_text("Cancelled")
             expect(page.locator("#alertDetail .cancellation-content")).to_contain_text(
                 "road reopened"
+            )
+            expect(page.locator("#alertDetail .cancellation-content")).to_contain_text(
+                "Cancellation root note."
             )
             expect(cards).to_have_count(3)
             expect(page.locator("#cancellationSummary")).to_have_text("Cancellation history · 1")

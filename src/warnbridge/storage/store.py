@@ -462,6 +462,7 @@ class Store:
                         "message_id": row["id"],
                         "sent": fields["sent"],
                         "headline": cancellation["headline"],
+                        "note": cancellation["note"],
                         "infos": cancellation["infos"],
                     }
                 )

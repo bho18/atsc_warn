@@ -22,6 +22,7 @@ def test_cancel_content_attaches_and_all_clear_alert_stays_independent(tmp_path)
             b"DEMO ONLY: Example instructions appear here.", b"All clear: roads have reopened."
         )
     )
+    cancel = cancel.replace(b"</scope>", b"</scope><note>Cancellation note survives.</note>")
     # Arriving out of order must not lose the cancellation or its additional text.
     ingest(config, wrap(cancel, entries=(1,), payload_type=1))
     with TestClient(create_app(config)) as api:
@@ -36,6 +37,7 @@ def test_cancel_content_attaches_and_all_clear_alert_stays_independent(tmp_path)
         assert item["alert"]["lifecycle"] == "cancelled"
         content = item["alert"]["cancellations"][0]
         assert content["message_id"] == cancel_id
+        assert content["note"] == "Cancellation note survives."
         assert len(content["infos"]) == 2
         assert "roads have reopened" in content["infos"][0]["instruction"]
         assert api.get(f"/api/v1/messages/{item['id']}/raw").content == original
