@@ -15,6 +15,7 @@ from typing import Any
 from warnbridge.config import Config, load_config
 from warnbridge.inputs.discovery import discover, inspect_device, open_receiver, select_device
 from warnbridge.inputs.hdhomerun import KEEPALIVE_PORT, Tuner, TunerError
+from warnbridge.inputs.health import ReceiverMonitor
 from warnbridge.inputs.streams import Chunk, Journal, file_chunks, journal_chunks, udp_chunks
 from warnbridge.pipeline import Ingestor
 
@@ -181,31 +182,63 @@ def live(args: argparse.Namespace, config: Config) -> int:
                             file=sys.stderr,
                             flush=True,
                         )
-                    last_data, warned = time.monotonic(), False
+                    monitor_context = (
+                        ReceiverMonitor(
+                            lambda: tuner.command("get", "status"), config.rf_poll_interval
+                        )
+                        if tuner
+                        else nullcontext(None)
+                    )
+                    with monitor_context as monitor:
 
-                    def keepalive() -> None:
-                        if tuner is not None:
-                            tuner.send_keepalive(sock)
+                        def persist_sample() -> None:
+                            sample = monitor.latest() if monitor else None
+                            if sample is not None:
+                                ingestor.store.record_receiver_status(
+                                    ingestor.sid,
+                                    str(active.receiver_host),
+                                    int(active.tuner or 0),
+                                    sample.checked_at,
+                                    sample.raw_status,
+                                    sample.error,
+                                )
 
-                    for chunk in udp_chunks(
-                        sock,
-                        stop,
-                        expected_host=active.receiver_host,
-                        duration=args.duration,
-                        keepalive=keepalive if tuner is not None else None,
-                    ):
-                        if chunk.data and not chunk.error:
+                        try:
                             last_data, warned = time.monotonic(), False
-                        if not warned and time.monotonic() - last_data >= config.no_data_warning:
-                            detail = (
-                                "No UDP TS data received: check RF lock, PID, and return IP/port. "
-                                "In WSL, check Windows/Hyper-V inbound filtering and inter-VLAN "
-                                "UDP routing; direct-IP control alone does not prove UDP works."
-                            )
-                            print(detail, file=sys.stderr, flush=True)
-                            ingestor.store.health_event(ingestor.sid, "no_udp_data", detail)
-                            warned = True
-                        yield chunk
+
+                            def keepalive() -> None:
+                                if tuner is not None:
+                                    tuner.send_keepalive(sock)
+
+                            for chunk in udp_chunks(
+                                sock,
+                                stop,
+                                expected_host=active.receiver_host,
+                                duration=args.duration,
+                                keepalive=keepalive if tuner is not None else None,
+                            ):
+                                persist_sample()
+                                if chunk.data and not chunk.error:
+                                    last_data, warned = time.monotonic(), False
+                                if (
+                                    not warned
+                                    and time.monotonic() - last_data >= config.no_data_warning
+                                ):
+                                    detail = (
+                                        "No UDP TS data received: check RF lock, PID, "
+                                        "and return IP/port. "
+                                        "In WSL, check Windows/Hyper-V inbound filtering "
+                                        "and inter-VLAN "
+                                        "UDP routing; direct-IP control alone "
+                                        "does not prove UDP works."
+                                    )
+                                    print(detail, file=sys.stderr, flush=True)
+                                    ingestor.store.health_event(ingestor.sid, "no_udp_data", detail)
+                                    warned = True
+                                yield chunk
+
+                        finally:
+                            persist_sample()
 
             # No raw TS/datagram files by default. Only decoded WARN evidence is persisted.
             journal = (

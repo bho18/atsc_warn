@@ -298,6 +298,12 @@ def test_live_native_peer_requires_keepalives_on_receiving_port(tmp_path, monkey
     assert "12345678" not in output
     assert not (tmp_path / "raw").exists()
     assert device.lock is None and device.target == "none"
+    store = Store(str(tmp_path / "native.db"))
+    radio = store.receiver_health()
+    assert radio["state"] == "stopped"
+    assert radio["fields"]["ch"] == "auto:7"
+    assert radio["host"] == "127.0.0.1" and radio["tuner"] == 0
+    store.close()
 
 
 def test_keepalive_send_failure_unwinds_owned_tuner(tmp_path, monkeypatch, capsys):

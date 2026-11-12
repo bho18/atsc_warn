@@ -11,7 +11,9 @@
   filter and explicit full-multiplex diagnostic option, with mocked race tests.
 - Immutable observation evidence, exact XML-content deduplication, identity conflict
   flags, CAP references/out-of-order resolution and conservative expiration display.
-- SQLite migration, ingestion exclusion, read-only API, offline desktop/mobile UI.
+- SQLite migrations, ingestion exclusion, read-only API, offline desktop/mobile UI.
+- Background RF polling/freshness states, individual delivery and grouped content
+  views, source-scoped counts and paginated reception history.
 - Locked Python dependencies, idempotent setup, offline validation, Docker and CI.
 - Separate saved-web-response import with no network polling or guessed comparison.
 
@@ -39,7 +41,8 @@ transport. See evidence.md for exact excerpt counts and provenance. The original
   is a new explicit capture attempt, with full idle/lock checks.
 - Containerized HDHomeRun control (the image lacks hdhomerun_config). Use the native
   host capture process initially; container image supports API/replay/raw UDP.
-- Alerts/observations need richer archive-scale browsing; detail caps at latest 100.
+- Legacy detail embeds at most 100 observations; the new paginated delivery API/UI
+  exposes full history. Archive retention/large-scale query tuning remains future work.
 
 **Next bounded task:** privately supply the original PID-only file, record SHA-256,
 run the baseline comparison without editing expected counts, inspect any divergence,

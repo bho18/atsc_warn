@@ -24,7 +24,7 @@ flowchart LR
 omitted when using the decoder as a library. `formats/` owns dispatch and preserved
 trees. `inputs/` owns acquisition and replay. `pipeline.py` handles classification,
 summary counters and persistence. `storage/001_initial.sql` is the explicit initial
-migration; newer unknown database versions are refused by writers. `api/` has no
+migration, followed by 002_receiver_status.sql for persisted RF samples; newer unknown database versions are refused by writers. `api/` has no
 receiver startup hook or mutation routes. `web/` contains all necessary UI assets.
 
 Each accepted observation stores raw TS bytes, stream offsets, assembled bytes,
@@ -43,7 +43,8 @@ writes after filesystem failure.
 A per-database POSIX flock allows only one ingestion worker, including imports.
 SQLite WAL permits API readers; each request opens a read-only connection. Sessions
 left running after an unclean crash are marked abandoned on the next exclusive
-writer acquisition. API detail includes at most 100 observations; raw parts select
+writer acquisition. Legacy API detail embeds at most 100 observations; paginated /api/v1/deliveries
+provides full accepted delivery history; raw parts select
 an observation belonging to the requested content ID, never a caller's path.
 
 No telemetry exporter, URL retrieval from XML, public-warning publisher, siren
@@ -59,3 +60,8 @@ Owned HDHomeRun reception now sends native UDP video keepalives from the same bo
 receiving socket to device port 5004. The receive-loop clock schedules them during
 idle periods; failures propagate through existing source/lease cleanup. No extra
 worker or raw recording is introduced.
+
+RF control reads run in a dedicated worker with a bounded latest-sample queue.
+The ingestion thread persists snapshots; the API reads them and computes freshness
+without device access. See ui-monitoring.md for threading, freshness and source-aware
+archive/delivery presentation.

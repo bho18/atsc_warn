@@ -212,3 +212,49 @@ This establishes user-verified live reception with the keepalive patch and the
 previously authorized firewall exception. It does not establish that either change
 alone was sufficient, certify public-warning delivery, validate signatures/schemas,
 or replace the pending original 56-packet-file acceptance test.
+
+## RF status and delivery-history UI correction
+
+The RF card previously stayed not_checked because health returned a constant and
+frontend refresh never populated it. A dedicated read-only status worker now polls
+while the tuner is owned. Its bounded queue is drained by the ingestion thread;
+SQLite remains confined to that thread, and slow control reads cannot block UDP
+keepalives. Persisted RF samples have lock/no-lock, stale, unavailable and stopped
+states. Schema 002 adds latest per-session samples and an observation index; schema-1
+messages/observations/raw evidence are preserved in place.
+
+The UI defaults to individual Deliveries and separately offers Unique content. It
+shows XML sent time, reception/processing time, source-filtered counts, latest receipt
+ordering and paginated history. Identical heartbeat content remains a single content
+record underneath, with each delivery individually accessible. Archive-wide repeat
+markers and source-scoped counts have distinct semantics documented in ui-monitoring.md.
+New GET /api/v1/deliveries pagination exposes histories beyond the legacy detail
+response's 100-observation cap. The RF display becomes unavailable on API disconnection;
+requests have bounded timeouts and automatic refresh avoids overlapping requests.
+
+Executed `./scripts/validate.sh`: **98 tests passed**, Ruff lint/format passed,
+strict mypy passed for 19 source files, and replay still produced 4 packets / 2
+complete messages / 2 CRC passes. The upstream Starlette HTTPX test-client warning
+remains. New tests cover RF refresh/error/stop behavior, stale samples after process
+loss, slow RF polling while keepalives continue, actual listener-to-DB status wiring,
+source-filtered 35-live/1-replay heartbeat counts, 125 deliveries under one content
+ID, paginated access past 100 observations, and raw-part ownership restrictions.
+Migration testing reopens a version-1 schema and compares retained original bytes.
+
+`uv build --offline --wheel --out-dir /tmp/warnbridge-ui-v2-wheel` succeeded; wheel
+inspection confirmed both SQL migrations, the RF worker and updated web assets.
+Native browser server used a disposable synthetic database at loopback port 8087.
+Executed both standard browser smoke and:
+
+```sh
+.venv/bin/python scripts/browser_smoke.py --url http://127.0.0.1:8087 \
+  --check-rf --check-cap --screenshot /tmp/warnbridge-ui-v2.png
+```
+
+Desktop 1400x1100 and mobile 390x844 passed with no external requests or unexpected
+JS/API errors. Mocked health replies exercised locked -> stale -> unavailable ->
+stopped, API connection loss and recovery. The synthetic archive exercised grouped
+content, per-delivery rows, source filtering and delivery-history paging. Hostile
+CAP text remained inert. Final native server logs contained no errors/tracebacks.
+No new physical RF polling or Windows configuration change was executed in cloud.
+Users must restart both processes for schema 2 and ongoing RF sampling.

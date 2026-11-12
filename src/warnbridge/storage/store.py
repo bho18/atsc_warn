@@ -9,6 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from warnbridge.formats.xml import Parsed, utc_time
+from warnbridge.inputs.hdhomerun import Tuner
 from warnbridge.transport.decoder import Event
 
 
@@ -43,16 +44,18 @@ class Store:
         try:
             self.db.execute("PRAGMA foreign_keys=ON")
             if readonly:
-                if self.db.execute("PRAGMA user_version").fetchone()[0] != 1:
+                if self.db.execute("PRAGMA user_version").fetchone()[0] != 2:
                     raise ValueError("unsupported database schema; run current writer migration")
                 return
             self.db.execute("PRAGMA journal_mode=WAL")
             self.db.execute("BEGIN IMMEDIATE")
             version = self.db.execute("PRAGMA user_version").fetchone()[0]
-            if version > 1:
+            if version > 2:
                 raise ValueError("database is newer than this application")
-            if version == 0:
-                migration = Path(__file__).with_name("001_initial.sql").read_text()
+            for target, filename in ((1, "001_initial.sql"), (2, "002_receiver_status.sql")):
+                if version >= target:
+                    continue
+                migration = Path(__file__).with_name(filename).read_text()
                 # This bundled migration has simple statements, no embedded semicolons.
                 # Check the version *after* taking the write lock for concurrent startup.
                 for statement in migration.split(";"):
@@ -183,18 +186,21 @@ class Store:
         params = (classification, classification, source, source)
         total = self.db.execute(f"SELECT count(*) FROM messages m {where}", params).fetchone()[0]
         rows = self.db.execute(
-            f"SELECT m.id FROM messages m {where} ORDER BY m.created_at DESC, "
-            "m.id LIMIT ? OFFSET ?",
-            (*params, limit, offset),
+            f"SELECT m.id FROM messages m {where} ORDER BY "
+            "(SELECT max(o.id) FROM observations o JOIN sessions s ON s.id=o.session_id "
+            "WHERE o.message_id=m.id AND (? IS NULL OR s.source=?)) DESC,m.id LIMIT ? OFFSET ?",
+            (*params, source, source, limit, offset),
         ).fetchall()
         return {
             "total": total,
             "limit": limit,
             "offset": offset,
-            "items": [self.message(row["id"], detail=False) for row in rows],
+            "items": [self.message(row["id"], detail=False, source=source) for row in rows],
         }
 
-    def message(self, mid: str, *, detail: bool = True) -> dict[str, Any] | None:
+    def message(
+        self, mid: str, *, detail: bool = True, source: str | None = None
+    ) -> dict[str, Any] | None:
         row = self.db.execute("SELECT * FROM messages WHERE id=?", (mid,)).fetchone()
         if not row:
             return None
@@ -214,20 +220,48 @@ class Store:
             "SELECT o.id,o.session_id,s.source,s.identity AS source_identity,o.processed_at,"
             "o.received_at,o.monotonic_ns,o.chunk_index,o.transport_id,o.inferred_transport_at,"
             "o.header,o.offsets,o.stored_crc,o.calculated_crc FROM observations o "
-            "JOIN sessions s ON o.session_id=s.id WHERE message_id=? ORDER BY o.id DESC LIMIT 100",
-            (mid,),
+            "JOIN sessions s ON o.session_id=s.id WHERE message_id=? "
+            "AND (? IS NULL OR s.source=?) ORDER BY o.id DESC LIMIT 100",
+            (mid, source, source),
         ).fetchall()
         result["delivery_count"] = self.db.execute(
-            "SELECT count(*) FROM observations WHERE message_id=?", (mid,)
+            "SELECT count(*) FROM observations o JOIN sessions s ON s.id=o.session_id "
+            "WHERE message_id=? AND (? IS NULL OR s.source=?)",
+            (mid, source, source),
         ).fetchone()[0]
         result["sources"] = [
             r[0]
             for r in self.db.execute(
                 "SELECT DISTINCT s.source FROM observations o JOIN sessions s ON s.id=o.session_id "
-                "WHERE o.message_id=? ORDER BY s.source",
-                (mid,),
+                "WHERE o.message_id=? AND (? IS NULL OR s.source=?) ORDER BY s.source",
+                (mid, source, source),
             )
         ]
+        times_row = self.db.execute(
+            "SELECT min(received_at),max(received_at),min(processed_at),max(processed_at) "
+            "FROM observations o JOIN sessions s ON s.id=o.session_id "
+            "WHERE message_id=? AND (? IS NULL OR s.source=?)",
+            (mid, source, source),
+        ).fetchone()
+        result.update(
+            zip(
+                (
+                    "first_received_at",
+                    "last_received_at",
+                    "first_processed_at",
+                    "last_processed_at",
+                ),
+                times_row,
+                strict=True,
+            )
+        )
+        result["declared_sent"] = result["fields"].get("sent") or None
+        number = result["fields"].get("CMAC_message_number", [])
+        result["protocol_identifier"] = (
+            (number[0] if len(number) == 1 else None)
+            if result["protocol"] == "CMAC"
+            else result["fields"].get("identifier")
+        )
         result["lifecycle"] = "unresolved" if result["protocol"] == "CAP" else "not_applicable"
         expires = result["fields"].get("expires", [])
         times = [utc_time(t) for t in expires]
@@ -263,6 +297,94 @@ class Store:
             result.pop("fields")
         return result
 
+    def deliveries(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        *,
+        message_id: str | None = None,
+        source: str | None = None,
+        classification: str | None = None,
+    ) -> dict[str, Any]:
+        where = (
+            "WHERE o.state='message' AND (? IS NULL OR o.message_id=?) "
+            "AND (? IS NULL OR s.source=?) AND (? IS NULL OR m.classification=?)"
+        )
+        params = (message_id, message_id, source, source, classification, classification)
+        joins = (
+            "FROM observations o JOIN messages m ON m.id=o.message_id "
+            "JOIN sessions s ON s.id=o.session_id "
+        )
+        total = self.db.execute("SELECT count(*) " + joins + where, params).fetchone()[0]
+        rows = self.db.execute(
+            "SELECT o.id,o.message_id,o.session_id,s.source,s.identity AS source_identity,"
+            "o.received_at,o.processed_at,o.transport_id,o.stored_crc,o.calculated_crc,"
+            "m.classification,m.fields,m.validation,EXISTS(SELECT 1 FROM observations prior "
+            "WHERE prior.message_id=o.message_id AND prior.id<o.id) AS repeated_content "
+            + joins
+            + where
+            + " ORDER BY o.id DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        ).fetchall()
+        items = []
+        for row in rows:
+            item = dict(row)
+            fields = json.loads(item.pop("fields"))
+            item["declared_sent"] = fields.get("sent") or None
+            number = fields.get("CMAC_message_number", [])
+            item["protocol_identifier"] = (
+                number[0] if len(number) == 1 else fields.get("identifier")
+            )
+            item["validation"] = json.loads(item["validation"])
+            item["repeated_content"] = bool(item["repeated_content"])
+            item["transport_id_hex"] = (
+                f"0x{item['transport_id']:08X}" if item["transport_id"] is not None else None
+            )
+            items.append(item)
+        return {"total": total, "limit": limit, "offset": offset, "items": items}
+
+    def record_receiver_status(
+        self,
+        sid: str,
+        host: str,
+        tuner: int,
+        checked_at: str,
+        raw_status: str | None,
+        error: str | None = None,
+    ) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT INTO receiver_status VALUES(?,?,?,?,?,?) ON CONFLICT(session_id) "
+                "DO UPDATE SET checked_at=excluded.checked_at,raw_status=excluded.raw_status,"
+                "error=excluded.error",
+                (sid, checked_at, host, tuner, raw_status, error),
+            )
+
+    def receiver_health(self, stale_after: float = 20.0) -> dict[str, Any] | None:
+        row = self.db.execute(
+            "SELECT r.*,s.state AS session_state,s.identity FROM receiver_status r "
+            "JOIN sessions s ON s.id=r.session_id ORDER BY s.started_at DESC LIMIT 1"
+        ).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        fields = Tuner.status_fields(row["raw_status"] or "")
+        checked = utc_time(row["checked_at"])
+        age = max(0.0, (datetime.now(UTC) - checked).total_seconds()) if checked else None
+        state = (
+            "stopped"
+            if row["session_state"] != "running"
+            else "stale"
+            if age is None or age > stale_after
+            else "unavailable"
+            if row["error"] or not fields
+            else "locked"
+            if fields.get("lock") not in (None, "none")
+            else "no_lock"
+        )
+        result.update(state=state, age_seconds=age, stale_after_seconds=stale_after, fields=fields)
+        return result
+
     def raw(self, mid: str, part: str, observation: int | None = None) -> bytes | None:
         if part == "xml":
             row = self.db.execute("SELECT xml FROM messages WHERE id=?", (mid,)).fetchone()
@@ -280,7 +402,8 @@ class Store:
         rows = self.db.execute("SELECT * FROM sessions ORDER BY started_at DESC LIMIT 100")
         return [{**dict(r), "summary": json.loads(r["summary"])} for r in rows]
 
-    def health(self) -> dict[str, Any]:
+    def health(self, *, rf_stale_after: float = 20.0) -> dict[str, Any]:
+        receiver = self.receiver_health(rf_stale_after)
         last: dict[str, Any] = {}
         for label, classification in (("heartbeat", "heartbeat"), ("link_test", "cmac_link_test")):
             row = self.db.execute(
@@ -292,7 +415,8 @@ class Store:
             last[label] = dict(row) if row else None
         return {
             "application": "ok",
-            "rf_tuner": "not_checked",
+            "rf_tuner": receiver["state"] if receiver else "not_checked",
+            "receiver": receiver,
             "ts_reception": {
                 "state": "not_continuously_monitored",
                 "last_live_received_at": self.db.execute(
@@ -311,6 +435,9 @@ class Store:
     def metrics(self) -> dict[str, Any]:
         return {
             "messages": self.db.execute("SELECT count(*) FROM messages").fetchone()[0],
+            "deliveries": self.db.execute(
+                "SELECT count(*) FROM observations WHERE state='message'"
+            ).fetchone()[0],
             "observations": self.db.execute("SELECT count(*) FROM observations").fetchone()[0],
             "retained_rejections": self.db.execute(
                 "SELECT count(*) FROM observations WHERE state='rejected'"

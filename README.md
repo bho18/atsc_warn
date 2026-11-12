@@ -82,3 +82,9 @@ Read [deployment](docs/deployment.md), [development](docs/development.md),
 
 **Real-capture validation pending; user previously reported successful validation
 with the experimental decoder.**
+
+The UI now defaults to **Deliveries** (one row per reception), with a separate
+**Unique content** view and paginated per-message history. RF status is polled by
+the live listener and shows stale/error/stopped states. Existing installations must
+restart both listener and server for the non-destructive schema-2 update. See
+[UI monitoring and upgrade instructions](docs/ui-monitoring.md).

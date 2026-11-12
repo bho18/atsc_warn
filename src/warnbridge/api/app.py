@@ -38,7 +38,10 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @app.get("/api/v1/health")
     def health(db: DB) -> dict[str, Any]:
-        return {**db.health(), "display_timezone": config.timezone}
+        return {
+            **db.health(rf_stale_after=config.rf_stale_after),
+            "display_timezone": config.timezone,
+        }
 
     @app.get("/api/v1/receivers")
     def receivers(db: DB) -> list[dict[str, Any]]:
@@ -57,6 +60,19 @@ def create_app(config: Config | None = None) -> FastAPI:
         source: Literal["file", "stdin", "replay", "live_udp", "live_hdhomerun"] | None = None,
     ) -> dict[str, Any]:
         return db.messages(limit, offset, classification, source)
+
+    @app.get("/api/v1/deliveries")
+    def deliveries(
+        db: DB,
+        limit: int = Query(50, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+        message_id: str | None = None,
+        source: Literal["file", "stdin", "replay", "live_udp", "live_hdhomerun"] | None = None,
+        classification: str | None = None,
+    ) -> dict[str, Any]:
+        return db.deliveries(
+            limit, offset, message_id=message_id, source=source, classification=classification
+        )
 
     @app.get("/api/v1/messages/{mid}")
     def message(mid: str, db: DB) -> dict[str, Any]:
