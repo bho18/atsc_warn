@@ -60,3 +60,21 @@ example, a signed alert, or a recorded OTA message.
   environment's network policy; see sources.md. No schema/signature success claim.
 - A valid CRC is not authentication; parseable XML is not schema validation;
   a heartbeat is not evidence of successful public-warning delivery.
+
+## User-reported live WSL test
+
+The user reported HDHR5-2US ID 10652CEC at 192.168.4.159, both tuners initially idle,
+and a successful owned tune of tuner 0 to auto:7. After settling, status was
+`lock=8vsb ss=100 snq=100 seq=100 bps=4512 pps=2`. Return target was
+`udp://192.168.1.21:5000`; Windows confirmed that address belonged to Wi-Fi, and
+WSL reported mirrored mode. Linux showed WarnBridge bound at 0.0.0.0:5000 but
+packet capture observed no incoming UDP at that port. WSL's effective Hyper-V
+firewall defaulted inbound to Block with no listed UDP 5000 allow. The user then
+authorized one source-scoped allow rule, but a later attempt still received no TS.
+The user has not supplied the effective rule after creation or a Windows NIC trace.
+
+These reports establish RF lock/control and absence of packets at the Linux capture
+point in those attempts, not the exclusive network cause. A source inspection then
+established a software omission: our adapter did not send native UDP video keepalives.
+The adapter now does; whether that resolves the physical WSL/VLAN case remains
+unverified. No original transport recording from these runs has been provided.

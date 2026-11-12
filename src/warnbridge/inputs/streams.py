@@ -4,7 +4,7 @@ import base64
 import json
 import socket
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event as StopEvent
@@ -37,11 +37,17 @@ def udp_chunks(
     *,
     expected_host: str | None = None,
     duration: float | None = None,
+    keepalive: Callable[[], None] | None = None,
 ) -> Iterator[Chunk]:
     sock.settimeout(0.5)
     start = time.monotonic()
     index = 0
+    next_keepalive = start
     while not stop.is_set() and (duration is None or time.monotonic() - start < duration):
+        now = time.monotonic()
+        if keepalive is not None and now >= next_keepalive:
+            keepalive()
+            next_keepalive = now + 1.0
         try:
             data, peer = sock.recvfrom(65535)  # actual bytes; never unused buffer capacity
         except TimeoutError:

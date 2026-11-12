@@ -54,3 +54,8 @@ do not create OTA messages or affect RF health.
 Native discovery, device metadata, automatic idle tuner leases and WSL return routing
 are documented in [live-receiver.md](live-receiver.md). HTTP serving still starts no
 receiver; tuner operations remain CLI-only.
+
+Owned HDHomeRun reception now sends native UDP video keepalives from the same bound
+receiving socket to device port 5004. The receive-loop clock schedules them during
+idle periods; failures propagate through existing source/lease cleanup. No extra
+worker or raw recording is introduced.

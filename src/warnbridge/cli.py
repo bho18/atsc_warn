@@ -14,7 +14,7 @@ from typing import Any
 
 from warnbridge.config import Config, load_config
 from warnbridge.inputs.discovery import discover, inspect_device, open_receiver, select_device
-from warnbridge.inputs.hdhomerun import Tuner, TunerError
+from warnbridge.inputs.hdhomerun import KEEPALIVE_PORT, Tuner, TunerError
 from warnbridge.inputs.streams import Chunk, Journal, file_chunks, journal_chunks, udp_chunks
 from warnbridge.pipeline import Ingestor
 
@@ -167,6 +167,7 @@ def live(args: argparse.Namespace, config: Config) -> int:
                             "return_ip": active.return_ip,
                             "udp_port": active.udp_port,
                             "raw_recording": config.record_raw,
+                            "keepalive_port": KEEPALIVE_PORT,
                             "status": snapshot,
                         }
                         json_line(status)
@@ -181,16 +182,25 @@ def live(args: argparse.Namespace, config: Config) -> int:
                             flush=True,
                         )
                     last_data, warned = time.monotonic(), False
+
+                    def keepalive() -> None:
+                        if tuner is not None:
+                            tuner.send_keepalive(sock)
+
                     for chunk in udp_chunks(
-                        sock, stop, expected_host=active.receiver_host, duration=args.duration
+                        sock,
+                        stop,
+                        expected_host=active.receiver_host,
+                        duration=args.duration,
+                        keepalive=keepalive if tuner is not None else None,
                     ):
                         if chunk.data and not chunk.error:
                             last_data, warned = time.monotonic(), False
                         if not warned and time.monotonic() - last_data >= config.no_data_warning:
                             detail = (
                                 "No UDP TS data received: check RF lock, PID, and return IP/port. "
-                                "WSL NAT may require mirrored networking or an existing UDP "
-                                "return route; direct-IP control alone does not prove UDP works."
+                                "In WSL, check Windows/Hyper-V inbound filtering and inter-VLAN "
+                                "UDP routing; direct-IP control alone does not prove UDP works."
                             )
                             print(detail, file=sys.stderr, flush=True)
                             ingestor.store.health_event(ingestor.sid, "no_udp_data", detail)

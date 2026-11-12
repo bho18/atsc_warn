@@ -55,6 +55,14 @@ Explicit --tuner never silently switches to another tuner. All tuners busy produ
 an error with no takeover. A non-none channel is conservatively treated as busy,
 even when target/lock appear empty. Jellyfin ownership is never force-cleared.
 
+The owned live adapter also sends the native four-byte lock-key keepalive from the
+bound receiving socket to the receiver's UDP port 5004, immediately on entering the
+receive loop and then approximately once per second (including idle periods). This
+matches SiliconDust's native video client and establishes/refreshes the same UDP
+flow through stateful gateways. The key is never included in logs or message data.
+Keepalives stop when reception exits; a send error unwinds the owned tuner lease.
+Generic `warnbridge udp`, replay, discovery and API serving send no keepalives.
+
 Routine reception sets a device-side filter for PID 0x0911 and consumes raw UDP TS
 in memory. **No transport/datagram recording files are created by default.** Only
 complete WARN message evidence and bounded failure diagnostics go into SQLite;
@@ -116,3 +124,30 @@ read-only and verify the chosen address/UDP port using local network diagnostics
 No hardware, Windows settings, Jellyfin, Caddy, firewall or VLAN was changed or
 contacted by cloud validation. Native discovery/control and WSL return paths still
 need the user's opt-in local hardware validation.
+
+## Confirm both directions after a keepalive update
+
+Stop the previous listener with Ctrl-C so it can release its owned tuner. Update
+and run a bounded test:
+
+```sh
+git pull --ff-only https://github.com/bho18/atsc_warn.git codex/warnbridge-initial
+./scripts/setup.sh
+.venv/bin/warnbridge listen --host 192.168.4.159 --channel 7 --duration 60
+```
+
+In another WSL terminal, capture packet headers in both directions (no TS file):
+
+```sh
+sudo tcpdump -ni any 'host 192.168.4.159 and udp and (port 5000 or port 5004)'
+```
+
+Expect a four-byte outgoing UDP keepalive from the selected local port (default
+5000) to receiver port 5004 approximately each second, followed by incoming TS data
+at the local port when the path/device permit it. No physical test is claimed by
+this update. A keepalive send succeeding does not prove that it reached the receiver.
+If outgoing requests appear but no replies do, the next bounded diagnostic is to
+locate the return traffic at Windows' network interface or the VLAN gateway.
+Windows/Hyper-V filtering, VLAN policy and device behavior remain possible causes;
+keepalives cannot bypass a deliberate network deny rule. The previously authorized
+source-scoped WSL firewall rule is independent of this application fix.

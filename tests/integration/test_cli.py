@@ -195,7 +195,7 @@ def test_no_udp_warning_is_actionable_and_persisted(tmp_path, monkeypatch, capsy
         cli.run(cli.parser().parse_args(["udp", "--config", str(cfg), "--udp-port", str(port)]))
         == 0
     )
-    assert "WSL NAT" in capsys.readouterr().err
+    assert "Windows/Hyper-V" in capsys.readouterr().err
     store = Store(str(tmp_path / "silent.db"))
     assert store.db.execute("SELECT kind FROM health_events").fetchone()[0] == "no_udp_data"
     store.close()
@@ -211,3 +211,140 @@ def test_cli_overrides_config_tuner_and_recording(tmp_path):
     )
     settings = cli.configure(args)
     assert settings.tuner is None and settings.channel == "auto:7" and not settings.record_raw
+
+
+def test_live_native_peer_requires_keepalives_on_receiving_port(tmp_path, monkeypatch, capsys):
+    """Emulate a receiver/gateway that sends TS only after native UDP registration."""
+    from contextlib import contextmanager
+    from dataclasses import replace
+    from threading import Event, Thread
+
+    from tests.unit.test_inputs import Device as MockTuner
+    from warnbridge import cli
+    from warnbridge.inputs import hdhomerun
+    from warnbridge.inputs.hdhomerun import Tuner
+
+    device = MockTuner()
+    stop = Event()
+    received = []
+    errors = []
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        client_port = probe.getsockname()[1]
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server:
+        server.bind(("127.0.0.1", 0))
+        server.settimeout(3)
+        monkeypatch.setattr(hdhomerun, "KEEPALIVE_PORT", server.getsockname()[1])
+
+        def peer():
+            try:
+                for _ in range(2):
+                    data, address = server.recvfrom(100)
+                    received.append((data, address, time.monotonic()))
+                    assert data == b"\x12\x34\x56\x78"
+                    assert address == ("127.0.0.1", client_port)
+                    assert device.lock == str(0x12345678)
+                server.sendto(heartbeat(), received[-1][1])
+                stop.wait(3)
+            except BaseException as error:
+                errors.append(error)
+
+        worker = Thread(target=peer)
+        worker.start()
+
+        @contextmanager
+        def connect(config):
+            active = replace(config, receiver_host="127.0.0.1", tuner=0, return_ip="127.0.0.1")
+            tuner = Tuner(active, device)
+            tuner.key = str(0x12345678)
+            with tuner:
+                yield tuner
+
+        monkeypatch.setattr(cli, "open_receiver", connect)
+        cfg = tmp_path / "native.toml"
+        cfg.write_text(f'database="{tmp_path}/native.db"\ncapture_dir="{tmp_path}/raw"\n')
+        try:
+            assert (
+                cli.run(
+                    cli.parser().parse_args(
+                        [
+                            "listen",
+                            "--config",
+                            str(cfg),
+                            "--channel",
+                            "7",
+                            "--udp-bind",
+                            "127.0.0.1",
+                            "--udp-port",
+                            str(client_port),
+                            "--duration",
+                            "2.2",
+                        ]
+                    )
+                )
+                == 0
+            )
+        finally:
+            stop.set()
+            worker.join(timeout=4)
+        assert not worker.is_alive() and not errors
+    output = capsys.readouterr().out
+    records = [json.loads(line) for line in output.splitlines()]
+    assert len(received) == 2
+    assert 0.8 <= received[1][2] - received[0][2] <= 2.5
+    assert any(r.get("classification") == "heartbeat" for r in records)
+    assert records[-1]["counts"]["heartbeats"] == 1
+    assert str(0x12345678) not in output
+    assert "12345678" not in output
+    assert not (tmp_path / "raw").exists()
+    assert device.lock is None and device.target == "none"
+
+
+def test_keepalive_send_failure_unwinds_owned_tuner(tmp_path, monkeypatch, capsys):
+    from contextlib import contextmanager
+    from dataclasses import replace
+
+    import pytest
+
+    from tests.unit.test_inputs import Device as MockTuner
+    from warnbridge import cli
+    from warnbridge.inputs.hdhomerun import Tuner
+
+    device = MockTuner()
+
+    @contextmanager
+    def connect(config):
+        active = replace(config, receiver_host="127.0.0.1", tuner=0, return_ip="127.0.0.1")
+        with Tuner(active, device) as tuner:
+            yield tuner
+
+    def fail(self, sock):
+        raise OSError("synthetic outbound UDP failure")
+
+    monkeypatch.setattr(cli, "open_receiver", connect)
+    monkeypatch.setattr(Tuner, "send_keepalive", fail)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    cfg = tmp_path / "failed-send.toml"
+    cfg.write_text(f'database="{tmp_path}/failed-send.db"\n')
+    with pytest.raises(OSError, match="outbound UDP"):
+        cli.run(
+            cli.parser().parse_args(
+                [
+                    "listen",
+                    "--config",
+                    str(cfg),
+                    "--channel",
+                    "7",
+                    "--udp-port",
+                    str(port),
+                    "--duration",
+                    ".01",
+                ]
+            )
+        )
+    assert device.lock is None and device.target == "none" and device.channel == "none"
+    store = Store(str(tmp_path / "failed-send.db"))
+    assert store.receivers()[0]["state"] == "failed"
+    store.close()

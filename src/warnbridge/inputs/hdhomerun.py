@@ -5,6 +5,7 @@ takeover or blind reconnect. No shell commands.
 """
 
 import secrets
+import socket
 import subprocess
 from collections.abc import Callable
 from types import TracebackType
@@ -12,6 +13,7 @@ from types import TracebackType
 from warnbridge.config import Config
 
 Runner = Callable[[list[str]], str]
+KEEPALIVE_PORT = 5004
 
 
 class TunerError(RuntimeError):
@@ -110,6 +112,19 @@ class Tuner:
         except BaseException:
             self.close()
             raise
+
+    def send_keepalive(self, sock: socket.socket) -> None:
+        """Native video keepalive, using the bound receiving socket and owned key.
+
+        SiliconDust's native client sends a big-endian uint32 to UDP 5004 every
+        second. Using a different socket/source port would not establish the same
+        return flow through stateful gateways. Never log the private lock token.
+        """
+        if not self.owned or not self.streaming:
+            raise TunerError("video keepalive requires an active owned stream")
+        sock.sendto(
+            int(self.key).to_bytes(4, "big"), (str(self.config.receiver_host), KEEPALIVE_PORT)
+        )
 
     def close(self) -> None:
         if not self.owned:

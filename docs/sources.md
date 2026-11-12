@@ -110,3 +110,23 @@ or redirects. That manufacturer web documentation remains inaccessible under thi
 cloud network policy; physical device/firmware response shape is unverified here.
 HTTP metadata behavior is tested with local mocks; explicit tuner/IP control remains
 available when metadata is unavailable. No device authentication field is stored.
+
+## Native UDP video keepalive verification
+
+Pinned SiliconDust source at `dc48af56d3c338288765b263e57129f711dedb9b` was fetched
+and inspected during the WSL no-data investigation:
+
+- `hdhomerun_device.c` lines 1370–1398: stream_start sets its target, then registers
+  the receiver IP, UDP port 5004 and the owned lock key with its video socket.
+- [hdhomerun_video.c](https://github.com/Silicondust/libhdhomerun/blob/dc48af56d3c338288765b263e57129f711dedb9b/hdhomerun_video.c)
+  lines 311–339: send a uint32 key from the receiving socket; send immediately and
+  repeat every 1000 milliseconds. SHA-256 of retrieved source:
+  `7f399d1ce3e68b6fcca60c9e96b67cb9aec4af4f3e9e7bd7ecfb521886345bdb`.
+- [hdhomerun_pkt.c](https://github.com/Silicondust/libhdhomerun/blob/dc48af56d3c338288765b263e57129f711dedb9b/hdhomerun_pkt.c)
+  lines 153–162: write_u32 serializes in big-endian order. SHA-256:
+  `a68d6b4e0248f2d630842d69949f1486d538cf14625655810d5a6063895d124f`.
+
+These independently inspected interface semantics justify a native keepalive in the
+Python adapter. Source license remains LGPL-2.1; no C implementation was copied or
+bundled. This is a four-byte video-control datagram, not a WARN heartbeat or alert.
+Its benefits for this user's WSL/VLAN return path remain a hardware-test hypothesis.

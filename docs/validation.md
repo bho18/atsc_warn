@@ -166,3 +166,29 @@ remain unverified: the cloud has not contacted the user's LAN. No schema, signat
 or real-capture acceptance claim has changed. See live-receiver.md for the exact
 local commands. Manufacturer HTTP API documentation re-fetch was blocked by proxy
 CONNECT 403; the adapter's metadata contract is tested with mocks only.
+
+## Native video keepalive correction
+
+User-reported mirrored WSL reception still had no incoming UDP after the proposed
+source-scoped firewall allowance. Code was compared with pinned official SiliconDust
+source; its native video client sends a four-byte big-endian owned key to device UDP
+5004, from its bound video socket, immediately and every 1000 ms. This step was
+missing from WarnBridge and is now implemented for owned HDHomeRun live inputs.
+No additional firewall, VLAN, firmware, receiver or Windows change was executed.
+
+Executed `./scripts/validate.sh`: **91 tests passed**; Ruff lint/format and strict
+mypy passed for 18 source files; reconstructed replay remained 4 packets, 2 messages,
+2 CRC passes and no rejected/incomplete messages. The existing upstream Starlette
+HTTPX test-client deprecation warning remains. No dependencies or migrations changed.
+
+New regression coverage checks the independently specified synthetic key 0x12345678
+becomes exactly bytes 12 34 56 78, the correct destination and receiving socket,
+periodic transmission during idle time, and refusal before/after ownership. A real
+loopback UDP peer withholds its heartbeat until two valid keepalives arrive from
+the bound receive port. The CLI then decodes the heartbeat, keeps the private token
+out of output/raw journals, and releases its tuner. Another test forces send failure
+and verifies target/channel/lock cleanup plus a failed persistent receiver session.
+
+These are source-conformance and mock/loopback tests, not proof that this resolves
+the user's actual WSL/VLAN routing. A hardware retry should inspect outbound UDP
+5000→5004 and inbound TS; sending a UDP datagram cannot prove the receiver got it.

@@ -216,3 +216,45 @@ def test_unexpected_udp_sender():
         assert next(source).error == "unexpected_udp_sender"
         stop.set()
         assert list(source) == []
+
+
+def test_native_keepalive_uses_owned_key_and_receiving_socket():
+    from unittest.mock import Mock
+
+    from warnbridge.inputs.hdhomerun import KEEPALIVE_PORT
+
+    device = Device()
+    lease = Tuner(config(), device)
+    lease.key = str(0x12345678)
+    sock = Mock(spec=socket.socket)
+    with pytest.raises(TunerError, match="owned stream"):
+        lease.send_keepalive(sock)
+    sock.sendto.assert_not_called()
+    with lease:
+        lease.send_keepalive(sock)
+        sock.sendto.assert_called_once_with(b"\x12\x34\x56\x78", ("192.0.2.10", KEEPALIVE_PORT))
+    with pytest.raises(TunerError, match="owned stream"):
+        lease.send_keepalive(sock)
+
+
+def test_keepalive_is_periodic_while_udp_is_idle(monkeypatch):
+    from unittest.mock import Mock
+
+    from warnbridge.inputs import streams
+
+    clock = [0.0]
+    sent = []
+    stop = Event()
+    sock = Mock(spec=socket.socket)
+
+    def timeout(_):
+        clock[0] += 0.5
+        raise TimeoutError
+
+    sock.recvfrom.side_effect = timeout
+    monkeypatch.setattr(streams.time, "monotonic", lambda: clock[0])
+    source = streams.udp_chunks(sock, stop, duration=2.1, keepalive=lambda: sent.append(clock[0]))
+    assert all(not chunk.data for chunk in source)
+    assert sent == [0.0, 1.0, 2.0]
+    stop.set()
+    assert list(source) == []
