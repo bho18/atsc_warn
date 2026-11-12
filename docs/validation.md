@@ -507,3 +507,25 @@ and mypy passed, reconstructed replay remained 4 packets / 2 messages / 2 CRC pa
 Existing integration tests include replay-to-API checks. All 22 local Markdown
 links in the changed guides resolved, and git diff --check passed. The existing
 upstream Starlette HTTPX test-client warning remains.
+
+## Canonical /opt/warnbridge deployment paths
+
+The user selected `/opt/warnbridge` for the ThinkCentre deployment. Updated standing
+instructions and current install/update guides to keep Compose, the host helper,
+local config and optional image pin under that directory. Ownership commands are
+scoped to the app/config directories; they never recursively change bare `/opt`.
+The archive remains in Docker's named volume mounted at container `/data`.
+
+Fixed a host-helper path bug: its default config destination was relative to the
+shell cwd even when --compose-file named another directory. It now matches Compose
+bind resolution and writes config/local.docker.toml beside the selected Compose
+file. Explicit --output remains an override, and existing config is never replaced.
+New tests simulate invocation from a parent/unrelated directory and verify that no
+config appears there and that an existing target config survives unchanged.
+
+Full setup/validation passed: **154 tests**, Ruff lint/format and mypy, plus the
+unchanged reconstructed 4-packet / 2-message / 2-CRC replay result and integration
+API checks. Changed documentation links resolve. A real Compose config expansion
+from a different cwd confirmed that both services bind the selected Compose
+folder's config and retain the archive volume. No host LAN, real /opt directory,
+private configuration or physical tuner was accessed in cloud.

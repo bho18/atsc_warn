@@ -119,13 +119,24 @@ def main():
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--udp-port", type=int, default=5000)
     parser.add_argument("--tuner", type=int, help="omit for safe idle-tuner selection")
-    parser.add_argument("--output", type=Path, default=Path("config/local.docker.toml"))
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="override config destination; default is config/local.docker.toml beside Compose",
+    )
     parser.add_argument(
         "--compose-file",
         default="compose.live.yaml",
         help="Compose file used in printed commands; use compose.yaml for downloaded deployments",
     )
     args = parser.parse_args()
+    # Match Compose's own relative bind-mount resolution, independent of shell cwd.
+    compose_directory = Path(args.compose_file).expanduser().resolve().parent
+    output = (
+        args.output.expanduser()
+        if args.output is not None
+        else compose_directory / "config/local.docker.toml"
+    )
     try:
         ipaddress.IPv4Address(args.receiver)
         address, subnet = detect_network(args.receiver, args.lan_ip)
@@ -138,14 +149,14 @@ def main():
             args.udp_port,
             args.tuner,
         )
-        args.output.parent.mkdir(parents=True, exist_ok=True)
+        output.parent.mkdir(parents=True, exist_ok=True)
         # Refuse accidental replacement of an installation's existing configuration.
-        with args.output.open("x") as stream:
+        with output.open("x") as stream:
             stream.write(content)
-        args.output.chmod(0o644)  # Readable by the unprivileged container UID; no secrets.
+        output.chmod(0o644)  # Readable by the unprivileged container UID; no secrets.
     except (ValueError, OSError) as exc:
         parser.exit(2, f"configure_docker: {exc}\n")
-    print(f"Wrote {args.output}: web http://{address}:{args.port}, trusted subnet {subnet}.")
+    print(f"Wrote {output}: web http://{address}:{args.port}, trusted subnet {subnet}.")
     print("Receiver and web share a persistent Docker volume. Raw recording is off.")
     print("Review the config, then run the read-only preflight:")
     print(

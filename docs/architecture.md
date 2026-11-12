@@ -88,7 +88,7 @@ disabled. No public ports, new reverse proxy or automatic firewall changes are
 introduced. See docker-live.md for routing, persistence and safe startup.
 
 The operator deployment is image-only: compose.deploy.yaml is downloaded as the
-host's compose.yaml and pulls ghcr.io/bho18/warnbridge:edge. The host needs no Git
+host's /opt/warnbridge/compose.yaml and pulls ghcr.io/bho18/warnbridge:edge. The host needs no Git
 checkout or build environment. The publishing workflow validates the source branch
 before releasing images; operator pull/up updates retain the local TOML and named
 archive. compose.live.yaml is the source-build developer alternative, while the

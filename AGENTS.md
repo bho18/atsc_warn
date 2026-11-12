@@ -29,9 +29,16 @@ check; update docs/validation.md with actual outcomes and unverified limitations
   as a fresh WarnBridge installation until the user confirms it is deployed. Prior
   WSL/laptop reception does not establish a checkout, installation or running service
   on the ThinkCentre. Do not ask again for the already recorded OS/host/tuner details.
-- The normal deployment is image-only. Follow `docs/docker-live.md`: create the host
+- The canonical host deployment directory is `/opt/warnbridge`, not bare `/opt`
+  or a source checkout. Keep `/opt/warnbridge/compose.yaml`, the helper,
+  `/opt/warnbridge/config/local.docker.toml` and optional `/opt/warnbridge/.env` there.
+  The archive remains in Docker's named volume, mounted at container `/data`.
+  Directory setup/ownership changes must target only `/opt/warnbridge` and its config
+  directory; never change ownership recursively across `/opt`.
+- The normal deployment is image-only. Follow `docs/docker-live.md`: create that host
   directory, download `compose.deploy.yaml` as `compose.yaml` and
-  `scripts/configure_docker.py`, run the helper with `--compose-file compose.yaml`,
+  `scripts/configure_docker.py`, run the helper with
+  `--compose-file /opt/warnbridge/compose.yaml`,
   then `docker compose pull` and `docker compose up -d`. A Git checkout, host venv,
   local image build and native host HDHomeRun CLI are not prerequisites.
 - The public image is `ghcr.io/bho18/warnbridge:edge`; anonymous manifest access,
@@ -41,7 +48,10 @@ check; update docs/validation.md with actual outcomes and unverified limitations
 - Keep the UI internal: explicit private LAN bind and trusted subnet allowlist,
   actual socket-peer checks, no forwarded-header trust, no public proxy/port
   forwarding or automatic firewall changes. Preserve existing Caddy/Jellyfin.
-- App updates on the host are `docker compose pull` then `docker compose up -d`.
+- App updates run from `/opt/warnbridge`: `docker compose pull` then
+  `docker compose up -d`. From another directory, use
+  `-f /opt/warnbridge/compose.yaml` explicitly. Default generated config paths must
+  resolve beside the Compose file, never under an unrelated working directory.
   Preserve `config/local.docker.toml`, optional image pin in `.env`, project name
   `warnbridge-live` and its archive volume. Do not instruct `down -v` or rerun the
   first-install config helper for routine updates. A Compose layout change must be

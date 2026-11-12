@@ -6,16 +6,39 @@ checkout, Python virtual environment, local image build, Caddy configuration or 
 existing WarnBridge installation. The host commands use `curl`, `python3` and
 `iproute2`, alongside Docker Compose.
 
+## Deployment directory
+
+The ThinkCentre installation directory is **`/opt/warnbridge`**. Keep this layout:
+
+```text
+/opt/warnbridge/
+  compose.yaml
+  configure_docker.py
+  config/local.docker.toml
+  .env                       # optional image pin
+```
+
+The archive lives in Docker's named volume, mounted at `/data` inside the containers.
+It is not written directly into `/opt`. The commands below create and change ownership
+only for `/opt/warnbridge` and its config directory; do not change ownership of `/opt`.
+
+The helper derives its default config path from the Compose file's directory, so
+`--compose-file /opt/warnbridge/compose.yaml` writes
+`/opt/warnbridge/config/local.docker.toml` even when invoked from another directory.
+Existing configuration is never overwritten. If files were already downloaded
+elsewhere, inspect their paths before moving them; do not replace a working config.
+
 ## First installation
 
-Download the deployment files into a new directory:
+Download the deployment files into the application directory:
 
 ```sh
-mkdir -p ~/warnbridge/config
-cd ~/warnbridge
-curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/compose.deploy.yaml -o compose.yaml
-curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/scripts/configure_docker.py -o configure_docker.py
-python3 configure_docker.py --compose-file compose.yaml
+sudo mkdir -p /opt/warnbridge/config
+sudo chown "$(id -u):$(id -g)" /opt/warnbridge /opt/warnbridge/config
+cd /opt/warnbridge
+curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/compose.deploy.yaml -o /opt/warnbridge/compose.yaml
+curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/scripts/configure_docker.py -o /opt/warnbridge/configure_docker.py
+python3 /opt/warnbridge/configure_docker.py --compose-file /opt/warnbridge/compose.yaml
 ```
 
 The configuration helper reads the ThinkCentre's own network settings and prints
@@ -25,12 +48,13 @@ RF channel 7, detects the host LAN address/subnet, and writes
 HDHomeRun. An existing local configuration is never overwritten. Run this helper
 once for first installation; normal image updates keep that file and do not rerun it.
 
-Pull the image and start the two containers:
+Pull the image and start the two containers. Absolute Compose paths also work
+when the shell is in another directory:
 
 ```sh
-docker compose pull
-docker compose up -d
-docker compose ps
+docker compose -f /opt/warnbridge/compose.yaml pull
+docker compose -f /opt/warnbridge/compose.yaml up -d
+docker compose -f /opt/warnbridge/compose.yaml ps
 ```
 
 Open the URL printed by the helper, normally `http://<ThinkCentre-LAN-IP>:8080`.
@@ -42,7 +66,7 @@ stream recording is enabled.
 See recent reception and web logs with:
 
 ```sh
-cd ~/warnbridge
+cd /opt/warnbridge
 docker compose logs --tail=50 -f receiver
 docker compose logs --tail=50 web
 ```
@@ -60,14 +84,14 @@ installs an update by running the pull/up commands below.
 As new images are published during development, run:
 
 ```sh
-cd ~/warnbridge
+cd /opt/warnbridge
 docker compose pull
 docker compose up -d
 docker compose ps
 ```
 
 This downloads the new `edge` image and recreates changed containers. It preserves
-`config/local.docker.toml` and the named archive volume. There is no `git pull` or
+`/opt/warnbridge/config/local.docker.toml` and the named archive volume. There is no `git pull` or
 image build on the ThinkCentre. If pulling fails, the running containers continue
 using their existing image; do not remove them to retry a download.
 
@@ -75,7 +99,7 @@ Normal app updates use the same Compose file. When a release also changes the
 deployment layout, refresh that file without replacing the local configuration:
 
 ```sh
-cd ~/warnbridge
+cd /opt/warnbridge
 curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/compose.deploy.yaml -o compose.yaml.new
 docker compose -f compose.yaml.new config --quiet
 cp compose.yaml compose.yaml.previous
@@ -85,7 +109,7 @@ docker compose up -d
 ```
 
 Images also have a commit-specific `sha-<full-commit-sha>` tag. To keep a particular
-version or roll back an app image, put its exact tag in `~/warnbridge/.env`:
+version or roll back an app image, put its exact tag in `/opt/warnbridge/.env`:
 
 ```dotenv
 WARNBRIDGE_IMAGE=ghcr.io/bho18/warnbridge:sha-<full-commit-sha>
@@ -112,7 +136,7 @@ logs. The receiver keeps its owned-lock safeguards and does not take a busy tune
 from another application. Container stop allows 60 seconds for owned cleanup.
 
 ```sh
-cd ~/warnbridge
+cd /opt/warnbridge
 docker compose stop
 # Remove containers while retaining the archive:
 docker compose down
@@ -130,9 +154,9 @@ For a first installation with an additional trusted client VLAN, a different
 configured host address, or different ports, use the helper before starting:
 
 ```sh
-python3 configure_docker.py --compose-file compose.yaml --allow-network 192.168.4.0/24
+python3 /opt/warnbridge/configure_docker.py --compose-file /opt/warnbridge/compose.yaml --allow-network 192.168.4.0/24
 # Alternative example; use an address actually assigned to the ThinkCentre:
-python3 configure_docker.py --compose-file compose.yaml --lan-ip 192.168.1.50 --port 8082 --udp-port 5001
+python3 /opt/warnbridge/configure_docker.py --compose-file /opt/warnbridge/compose.yaml --lan-ip 192.168.1.50 --port 8082 --udp-port 5001
 ```
 
 These are alternative first-run commands. For an existing installation, edit its

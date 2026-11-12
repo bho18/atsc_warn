@@ -119,3 +119,40 @@ def test_downloaded_install_prints_image_pull_commands(tmp_path, monkeypatch, ca
     assert "docker compose -f compose.yaml pull" in output
     assert "docker compose -f compose.yaml up -d" in output
     assert "--build" not in output
+
+
+def test_default_config_is_beside_compose_not_the_current_directory(tmp_path, monkeypatch):
+    opt = tmp_path / "opt"
+    deployment = opt / "warnbridge"
+    deployment.mkdir(parents=True)
+    compose = deployment / "compose.yaml"
+    compose.write_text("services: {}\n")
+    monkeypatch.chdir(opt)
+    monkeypatch.setattr(setup, "detect_network", lambda *args: ("192.168.1.50", "192.168.1.0/24"))
+    monkeypatch.setattr(sys, "argv", ["configure_docker.py", "--compose-file", str(compose)])
+    setup.main()
+    output = deployment / "config/local.docker.toml"
+    assert output.is_file()
+    assert tomllib.loads(output.read_text())["database"] == "/data/warnbridge.db"
+    assert not (opt / "config").exists()
+
+
+def test_existing_compose_anchored_config_is_preserved_from_another_directory(
+    tmp_path, monkeypatch
+):
+    deployment = tmp_path / "opt/warnbridge"
+    (deployment / "config").mkdir(parents=True)
+    config = deployment / "config/local.docker.toml"
+    config.write_text("existing deployment config")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.setattr(setup, "detect_network", lambda *args: ("192.168.1.50", "192.168.1.0/24"))
+    monkeypatch.setattr(
+        sys, "argv", ["configure_docker.py", "--compose-file", str(deployment / "compose.yaml")]
+    )
+    with pytest.raises(SystemExit) as result:
+        setup.main()
+    assert result.value.code == 2
+    assert config.read_text() == "existing deployment config"
+    assert not (elsewhere / "config").exists()

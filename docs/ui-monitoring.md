@@ -112,7 +112,7 @@ routes restrict an observation to its requested content ID and expose no file pa
 For the ThinkCentre Docker deployment, use the existing downloaded Compose directory:
 
 ```sh
-cd ~/warnbridge
+cd /opt/warnbridge
 docker compose pull
 docker compose up -d
 ```

@@ -16,24 +16,26 @@ For a fresh installation on `homeserver`, download two small deployment files;
 Docker pulls the app image. No Git checkout or local build is required:
 
 ```sh
-mkdir -p ~/warnbridge/config
-cd ~/warnbridge
-curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/compose.deploy.yaml -o compose.yaml
-curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/scripts/configure_docker.py -o configure_docker.py
-python3 configure_docker.py --compose-file compose.yaml
+sudo mkdir -p /opt/warnbridge/config
+sudo chown "$(id -u):$(id -g)" /opt/warnbridge /opt/warnbridge/config
+cd /opt/warnbridge
+curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/compose.deploy.yaml -o /opt/warnbridge/compose.yaml
+curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/scripts/configure_docker.py -o /opt/warnbridge/configure_docker.py
+python3 /opt/warnbridge/configure_docker.py --compose-file /opt/warnbridge/compose.yaml
 docker compose pull
 docker compose up -d
 ```
 
-The helper detects the ThinkCentre's LAN address/subnet and prints the web URL.
-The UI binds that private address and enforces the internal client allowlist.
+Compose and configuration files live under `/opt/warnbridge`; archived messages
+stay in Docker's named volume. The helper detects the ThinkCentre's LAN address/subnet
+and prints the web URL. The UI binds that private address and enforces the internal client allowlist.
 Receiver and web containers share a persistent archive; raw stream recording is off.
 The public deployment image is `ghcr.io/bho18/warnbridge:edge`; no registry login is needed.
 
 For each published update:
 
 ```sh
-cd ~/warnbridge
+cd /opt/warnbridge
 docker compose pull
 docker compose up -d
 ```

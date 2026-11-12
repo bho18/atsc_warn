@@ -13,11 +13,13 @@ configuration helper. It requires no WarnBridge checkout, host venv or local bui
 The public image is `ghcr.io/bho18/warnbridge:edge`; it includes the native tuner CLI.
 The helper detects the ThinkCentre's private address and prints the internal web URL.
 
-The installed Compose file is named `compose.yaml`, downloaded from
-`compose.deploy.yaml`. Normal updates run in that host directory:
+The installed Compose file is `/opt/warnbridge/compose.yaml`, downloaded from
+`compose.deploy.yaml`. Configuration is `/opt/warnbridge/config/local.docker.toml`;
+the archive stays in Docker's named volume. Use `/opt/warnbridge`, not bare `/opt`.
+Normal updates run in that host directory:
 
 ```sh
-cd ~/warnbridge
+cd /opt/warnbridge
 docker compose pull
 docker compose up -d
 ```
