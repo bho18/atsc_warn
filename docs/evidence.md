@@ -134,3 +134,21 @@ This distinguishes their broad purposes; it does not explain the user's repeated
 2020-dated Link Test template. Different message numbers/sent times/content produce
 different exact-content records; counts alone cannot establish loss, origin-side
 retransmission policy or distinct test functions. Those remain unverified.
+
+## Retained live-failure export (November 12, 2026)
+
+The user supplied six SQLite observation exports containing original TS and assembled
+bytes, headers, offsets and reception metadata. This is separate from the still-missing
+original 56-packet recording. Six retained observations represent three distinct
+assembled messages received twice: two CAP contents and one CMAC content. All six
+reassemble exactly, with no within-observation continuity gaps. Interpreting the
+variable header yields body lengths 5,990, 5,690 and 5,761 bytes; all stored CRCs match,
+all CRC residues are zero, and remaining stuffing is FF. The previous four-byte
+length interpretation incorrectly included header entries/discriminator bytes.
+
+Local corrected-decoder replay accepts all six and parses all three XML documents.
+An isolated recovery harness seeded with the exported rows recovers all six in place,
+retaining IDs, source group, clocks, raw bytes and offsets; repeat recovery adds none.
+The private export and extracted content are not committed or published. Public
+regressions use synthetic messages with equivalent framing, not copied alert text.
+This establishes support for the supplied variants, not every possible WARN variant.

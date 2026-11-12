@@ -217,7 +217,10 @@ class Decoder:
         a.packets.append(p)
         a.offsets.append(offset)
         a.size += len(content) - 8
-        if a.size > self.limits.max_body + 13 + 4 + 175:
+        # Byte 9 counts three-byte header entries. The header can span packets.
+        prefix = b"".join(a.fragments[:10])[:10]
+        header_size = 13 + 3 * prefix[9] if len(prefix) >= 10 else 13 + 3 * 255
+        if a.size > self.limits.max_body + header_size + 4 + 175:
             yield from self._drop("assembly_size_limit", [ident])
             return
         if index == last:
@@ -242,14 +245,21 @@ class Decoder:
         if len(raw) < 17:
             reason = "short_message"
         else:
-            length = int.from_bytes(raw[9:13], "big")
-            if length > self.limits.max_body:
+            # Observed framing: count at 9, count * 3 opaque entry bytes,
+            # one payload discriminator, then a two-byte big-endian body length.
+            # Never scan for XML or infer framing from the body contents.
+            header_size = 13 + 3 * raw[9]
+            e.header = raw[:header_size]
+            length = int.from_bytes(raw[header_size - 2 : header_size], "big")
+            if len(raw) < header_size + 4:
+                reason = "truncated_message_header"
+            elif length > self.limits.max_body:
                 reason = "body_size_limit"
-            elif 13 + length + 4 > len(raw):
+            elif header_size + length + 4 > len(raw):
                 reason = "body_length_exceeds_assembly"
             else:
-                end = 13 + length
-                e.body = raw[13:end]
+                end = header_size + length
+                e.body = raw[header_size:end]
                 e.stored_crc = int.from_bytes(raw[end : end + 4], "big")
                 e.calculated_crc = crc32_mpeg2(raw[:end])
                 self.counts["crc_pass" if e.stored_crc == e.calculated_crc else "crc_fail"] += 1

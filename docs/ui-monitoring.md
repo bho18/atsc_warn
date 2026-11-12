@@ -2,12 +2,11 @@
 
 ## Alerts and the live heartbeat indicator
 
-The default **Alerts** inbox shows live CAP and non-Link-Test CMAC content. It
+The default **Alerts** inbox shows live received message content, including unknown/malformed content for review. It
 excludes heartbeat/Link Test traffic without dropping evidence. Choose **replay**,
-file/stdin or All sources explicitly to inspect imported examples. Each card shows
-protocol, declared status, source, receipt/sent/expiry, delivery count and a readable
-headline when available. Test/System/Exercise/Draft/unknown content remains clearly
-labeled and accessible. Actual means a field value, not an authenticated warning.
+file/stdin or All sources explicitly to inspect imported examples. Each card shows an Active, Expired, Cancelled or other lifecycle badge, protocol,
+message status, source, receipt/sent/expiry, delivery count and readable text. Test/System/Exercise/Draft/unknown content remains clearly
+labeled and accessible. A single small note states that message signatures are not verified.
 
 The inspector shows CAP languages/information blocks, severity/urgency/certainty,
 instructions, description, parameters (including wireless alert text), separate
@@ -23,8 +22,8 @@ CAP Update/Cancel references and expiration are projected conservatively within
 the selected source group, without changing evidence. Live imports cannot be
 cancelled by replay. Conflicts/mixed sources/ambiguous latest references need review.
 Missing targets and cancellation messages without info remain visible. See
-protocol.md for exact rules. CMAC receives an experimental original-field review
-view; no current CMAC schema, enum mapping, geography or lifecycle is assumed.
+protocol.md for exact rules. CMAC displays readable message text, declared sent/expiry timing, and expandable
+original fields. An explicit matching CAP identity shares cancellation status.
 
 The connection indicator pulses once on each newly observed, fresh **live**
 heartbeat delivery. It does not pulse on every UI refresh or on imported/replay
@@ -124,8 +123,8 @@ commands below apply only to an intentional source/native installation.
 
 ### Native/source upgrade alternative
 
-Stop **both** the listener and web server before updating. The alert inbox retains
-schema 2. For installations still on schema 1, database migration 002
+Stop **both** the listener and web server before updating. This release uses
+schema 3; migration 003 adds a recovery audit table and reference index. For installations still on schema 1, database migration 002
 adds a per-session latest RF snapshot table and an observation index, taking schema
 version 1 to 2. Existing messages, delivery counts, raw bytes and relationships are
 preserved; no reimport or database deletion is needed. Old binaries must be stopped
@@ -149,3 +148,26 @@ Refresh the browser. RF status should update within the polling/UI cycle after a
 successful device query. The alert inbox reads existing preserved trees immediately;
 no reimport/deletion is needed. Diagnostics retains individual and grouped check
 traffic. Live heartbeat animation needs timed reception, not imported data.
+
+## Cancellations, failure inspection and recovered deliveries
+
+Proper CAP Cancel messages do not get their own alert cards. They change referenced
+alerts to Cancelled and add their information blocks/instructions under Cancellation
+details. Cancellation history remains accessible even when the original alert was
+not received. Diagnostics retains all accepted records. An all-clear sent with
+`msgType=Alert` stays a new alert with its own expiry, regardless of its text.
+Missing/invalid expiry stays Status unknown rather than inventing an expiration.
+Badges and open inspectors refresh with new cancellations and elapsed expiry times.
+
+Retained failures now have a paginated list and direct packet/assembled/header
+byte downloads. `GET /api/v1/diagnostics/{id}/raw?part=raw_ts` returns original TS;
+`part=assembled`, `header`, or `body` select the retained part. The observation must
+still be rejected. The diagnostic count is all-source; it excludes recovered rows.
+The alert API uses `cancellations=true` for cancellation history, with the same
+source/status filters and pagination. `/messages/{id}/text` provides an encoding-aware
+plain-text preview while `/raw` continues to return exact original bytes.
+
+Restarting the updated receiver automatically recovers eligible retained failures.
+Recovered deliveries retain original IDs, source and timestamps. Message observation
+metadata includes recovery time and the previous reason; session counters are not
+rewritten. No manual export/reimport or raw recording needs to be enabled.

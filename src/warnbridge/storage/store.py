@@ -20,7 +20,8 @@ def utc_now() -> str:
 
 def known_header(header: bytes) -> bool:
     return (
-        len(header) == 13
+        len(header) >= 13
+        and len(header) == 13 + 3 * header[9]
         and header[0] == 0x2F
         and header[1] in (0, 3)
         and header[2:4] == b"\x00\xff"
@@ -45,15 +46,19 @@ class Store:
         try:
             self.db.execute("PRAGMA foreign_keys=ON")
             if readonly:
-                if self.db.execute("PRAGMA user_version").fetchone()[0] != 2:
+                if self.db.execute("PRAGMA user_version").fetchone()[0] != 3:
                     raise ValueError("unsupported database schema; run current writer migration")
                 return
             self.db.execute("PRAGMA journal_mode=WAL")
             self.db.execute("BEGIN IMMEDIATE")
             version = self.db.execute("PRAGMA user_version").fetchone()[0]
-            if version > 2:
+            if version > 3:
                 raise ValueError("database is newer than this application")
-            for target, filename in ((1, "001_initial.sql"), (2, "002_receiver_status.sql")):
+            for target, filename in (
+                (1, "001_initial.sql"),
+                (2, "002_receiver_status.sql"),
+                (3, "003_recoveries.sql"),
+            ):
                 if version >= target:
                     continue
                 migration = Path(__file__).with_name(filename).read_text()
@@ -97,41 +102,45 @@ class Store:
                 "(SELECT id FROM health_events ORDER BY id DESC LIMIT 1000)"
             )
 
+    def _record_content(self, event: Event, parsed: Parsed, now: str) -> str:
+        content = parsed.xml if parsed.xml is not None else event.body
+        mid = sha256(content).hexdigest()
+        validation = {
+            "transport": "valid",
+            "xml": parsed.xml_state,
+            "schema": parsed.schema_state,
+            "signature": parsed.signature_state,
+            "geography": parsed.geography_state,
+            "parse_reason": parsed.reason,
+        }
+        identity = json.dumps(parsed.identity) if parsed.identity else None
+        self.db.execute(
+            "INSERT OR IGNORE INTO messages VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                mid,
+                parsed.protocol,
+                parsed.classification,
+                parsed.xml,
+                json.dumps(parsed.fields),
+                json.dumps(validation),
+                identity,
+                int(parsed.actual_public),
+                now,
+            ),
+        )
+        for ref in parsed.references:
+            self.db.execute(
+                "INSERT OR IGNORE INTO relationships VALUES(?,?,?)",
+                (mid, json.dumps(ref), parsed.fields.get("msgType", "unknown")),
+            )
+        return mid
+
     def record(self, sid: str, event: Event, parsed: Parsed | None, chunk_index: int) -> str | None:
         mid = None
         now = utc_now()
         with self.db:
             if event.kind == "message" and parsed is not None:
-                content = parsed.xml if parsed.xml is not None else event.body
-                mid = sha256(content).hexdigest()
-                validation = {
-                    "transport": "valid",
-                    "xml": parsed.xml_state,
-                    "schema": parsed.schema_state,
-                    "signature": parsed.signature_state,
-                    "geography": parsed.geography_state,
-                    "parse_reason": parsed.reason,
-                }
-                identity = json.dumps(parsed.identity) if parsed.identity else None
-                self.db.execute(
-                    "INSERT OR IGNORE INTO messages VALUES(?,?,?,?,?,?,?,?,?)",
-                    (
-                        mid,
-                        parsed.protocol,
-                        parsed.classification,
-                        parsed.xml,
-                        json.dumps(parsed.fields),
-                        json.dumps(validation),
-                        identity,
-                        int(parsed.actual_public),
-                        now,
-                    ),
-                )
-                for ref in parsed.references:
-                    self.db.execute(
-                        "INSERT OR IGNORE INTO relationships VALUES(?,?,?)",
-                        (mid, json.dumps(ref), parsed.fields.get("msgType", "unknown")),
-                    )
+                mid = self._record_content(event, parsed, now)
             # Empirical interpretation only, suppressed for heartbeat and implausible years.
             inferred = None
             if event.transport_id and event.transport_id != 0x411:
@@ -221,7 +230,10 @@ class Store:
         result["conflict"] = bool(
             row["identity"]
             and self.db.execute(
-                "SELECT count(*) FROM messages WHERE identity=?", (row["identity"],)
+                "SELECT count(*) FROM messages m WHERE identity=? AND EXISTS "
+                "(SELECT 1 FROM observations o JOIN sessions s ON s.id=o.session_id "
+                f"WHERE o.message_id=m.id AND {source_sql})",
+                (row["identity"], *source_params),
             ).fetchone()[0]
             > 1
         )
@@ -279,9 +291,12 @@ class Store:
         if times and all(t is not None and t <= datetime.now(UTC) for t in times):
             result["lifecycle"] = "expired"
         result["operational_notifications"] = "disabled"
-        if result["protocol"] in ("CAP", "CMAC") and result["classification"] != "cmac_link_test":
+        if result["classification"] not in ("heartbeat", "cmac_link_test"):
             result["alert"] = project_alert(result["protocol"], result["fields"])
+            if result["validation"]["parse_reason"]:
+                result["alert"]["issues"].append(result["validation"]["parse_reason"])
             self.cap_lifecycle(result, source)
+            self.cmac_lifecycle(result, source)
         else:
             result["alert"] = None
         if detail:
@@ -294,6 +309,12 @@ class Store:
                     f"0x{o['transport_id']:08X}" if o["transport_id"] is not None else None
                 )
                 item["offsets"] = json.loads(item["offsets"])
+                recovered = self.db.execute(
+                    "SELECT recovered_at,original_reason FROM observation_recoveries "
+                    "WHERE observation_id=?",
+                    (o["id"],),
+                ).fetchone()
+                item["recovery"] = dict(recovered) if recovered else None
                 result["observations"].append(item)
             result["observations_truncated"] = result["delivery_count"] > 100
             result["relationships"] = [
@@ -365,12 +386,12 @@ class Store:
 
     def cap_lifecycle(self, message: dict[str, Any], source: str | None) -> None:
         alert = message["alert"]
-        if message["protocol"] != "CAP" or alert["status"] != "Actual":
+        if message["protocol"] != "CAP":
             return
         if message["conflict"]:
             alert["lifecycle"] = "identity_conflict"
             return
-        if alert["scope"] != "Public" or alert["message_type"] not in ("Alert", "Update"):
+        if alert["message_type"] not in ("Alert", "Update"):
             return
         if not message["identity"] or not utc_time(alert["sent"] or ""):
             alert["lifecycle"] = "unknown"
@@ -406,17 +427,26 @@ class Store:
             sent = utc_time(fields.get("sent", ""))
             original_sent = utc_time(alert["sent"])
             if (
-                fields.get("status") != "Actual"
-                or fields.get("scope") != "Public"
-                or fields.get("sender") != alert["sender"]
+                not alert["status"]
+                or fields.get("status") != alert["status"]
+                or not alert["scope"]
+                or fields.get("scope") != alert["scope"]
                 or sent is None
                 or original_sent is None
-                or sent <= original_sent
             ):
+                continue
+            if sent < original_sent:
+                alert["lifecycle"] = "reference_review"
+                alert["issues"].append(
+                    "Referencing message has an earlier sent time than its target"
+                )
                 continue
             conflict = (
                 self.db.execute(
-                    "SELECT count(*) FROM messages WHERE identity=?", (row["identity"],)
+                    "SELECT count(*) FROM messages m WHERE identity=? AND EXISTS "
+                    "(SELECT 1 FROM observations o JOIN sessions s ON s.id=o.session_id "
+                    f"WHERE o.message_id=m.id AND {source_sql})",
+                    (row["identity"], *source_params),
                 ).fetchone()[0]
                 > 1
             )
@@ -425,6 +455,16 @@ class Store:
                 alert["lifecycle"] = "reference_review"
                 continue
             related.append((sent, row["id"], row["kind"], fields["sent"]))
+            if row["kind"] == "Cancel":
+                cancellation = project_alert("CAP", fields)
+                alert["cancellations"].append(
+                    {
+                        "message_id": row["id"],
+                        "sent": fields["sent"],
+                        "headline": cancellation["headline"],
+                        "infos": cancellation["infos"],
+                    }
+                )
         alert["relationships"] = [
             {"message_id": mid, "type": kind, "sent": stamp}
             for _, mid, kind, stamp in sorted(related)
@@ -438,6 +478,58 @@ class Store:
                 alert["lifecycle"] = "cancelled" if latest[2] == "Cancel" else "superseded"
         alert["lifecycle_interpretation"] = "Declared CAP relationships; authentication not checked"
 
+    def cmac_lifecycle(self, message: dict[str, Any], source: str | None) -> None:
+        """Link only an explicitly named CAP counterpart, never all-clear text."""
+        if message["protocol"] != "CMAC":
+            return
+        from warnbridge.domain.alerts import value
+        from warnbridge.formats.xml import CMAC
+
+        root = message["fields"].get("tree", {})
+        identifier = value(root, CMAC, "CMAC_cap_identifier")
+        sender = value(root, CMAC, "CMAC_sender")
+        sent = utc_time(value(root, CMAC, "CMAC_cap_sent_date_time") or "")
+        if not identifier or not sender or sent is None:
+            return
+        scope = source
+        if scope is None:
+            sources = set(message["sources"])
+            if sources and sources <= {"live_udp", "live_hdhomerun"}:
+                scope = "live"
+            elif len(sources) == 1:
+                scope = next(iter(sources))
+            else:
+                return
+        source_sql, params = self.source_filter(scope)
+        matches = []
+        for row in self.db.execute(
+            "SELECT m.id,m.fields FROM messages m WHERE m.protocol='CAP' "
+            "AND json_extract(m.fields,'$.identifier')=? "
+            "AND json_extract(m.fields,'$.sender')=? AND EXISTS "
+            "(SELECT 1 FROM observations o JOIN sessions s ON s.id=o.session_id "
+            f"WHERE o.message_id=m.id AND {source_sql})",
+            (identifier, sender, *params),
+        ):
+            if utc_time(json.loads(row["fields"]).get("sent", "")) == sent:
+                matches.append(row["id"])
+        if len(matches) != 1:
+            if matches:
+                message["alert"]["issues"].append("Ambiguous referenced CAP counterpart")
+            return
+        counterpart = self.message(matches[0], detail=False, source=scope)
+        if counterpart is None:
+            return
+        message["alert"]["cap_message_id"] = matches[0]
+        cap = counterpart["alert"]
+        if cap["status"] == message["alert"]["status"] and cap["lifecycle"] in (
+            "cancelled",
+            "superseded",
+            "reference_review",
+            "identity_conflict",
+        ):
+            for key in ("lifecycle", "relationships", "cancellations"):
+                message["alert"][key] = cap[key]
+
     def alerts(
         self,
         limit: int = 50,
@@ -445,17 +537,20 @@ class Store:
         *,
         source: str | None = "live",
         status: str | None = None,
+        cancellations: bool = False,
     ) -> dict[str, Any]:
         source_sql, source_params = self.source_filter(source)
         where = (
-            "WHERE m.protocol IN ('CAP','CMAC') AND m.classification!='cmac_link_test' "
+            "WHERE m.classification NOT IN ('heartbeat','cmac_link_test') "
+            "AND (CASE WHEN m.protocol='CAP' AND json_extract(m.fields,'$.msgType')='Cancel' "
+            "THEN 1 ELSE 0 END)=? "
             "AND EXISTS (SELECT 1 FROM observations o JOIN sessions s ON s.id=o.session_id "
             f"WHERE o.message_id=m.id AND {source_sql}) "
             "AND (? IS NULL OR COALESCE(NULLIF(json_extract(m.fields,'$.status'),''),"
             "CASE WHEN json_array_length(m.fields,'$.CMAC_status')=1 THEN "
             "NULLIF(json_extract(m.fields,'$.CMAC_status[0]'),'') END,'Unknown')=?)"
         )
-        params = (*source_params, status, status)
+        params = (int(cancellations), *source_params, status, status)
         total = self.db.execute(f"SELECT count(*) FROM messages m {where}", params).fetchone()[0]
         rows = self.db.execute(
             f"SELECT m.id FROM messages m {where} ORDER BY "
@@ -599,6 +694,9 @@ class Store:
             "observations": self.db.execute("SELECT count(*) FROM observations").fetchone()[0],
             "retained_rejections": self.db.execute(
                 "SELECT count(*) FROM observations WHERE state='rejected'"
+            ).fetchone()[0],
+            "recovered_observations": self.db.execute(
+                "SELECT count(*) FROM observation_recoveries"
             ).fetchone()[0],
             "sessions": self.receivers(),
         }

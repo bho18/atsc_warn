@@ -96,6 +96,8 @@ def test_v1_migration_preserves_original_evidence(tmp_path):
     store = Store(config.database)
     original = store.db.execute("SELECT raw_ts,body,header FROM observations").fetchone()
     with store.db:
+        store.db.execute("DROP TABLE observation_recoveries")
+        store.db.execute("DROP INDEX relationships_target")
         store.db.execute("DROP TABLE receiver_status")
         store.db.execute("DROP INDEX observations_state_id")
         store.db.execute("PRAGMA user_version=1")
@@ -105,7 +107,7 @@ def test_v1_migration_preserves_original_evidence(tmp_path):
         assert api.get("/api/v1/deliveries").json()["total"] == 1
         assert api.get("/api/v1/health").json()["rf_tuner"] == "not_checked"
     store = Store(config.database)
-    assert store.db.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert store.db.execute("PRAGMA user_version").fetchone()[0] == 3
     assert tuple(
         store.db.execute("SELECT raw_ts,body,header FROM observations").fetchone()
     ) == tuple(original)

@@ -24,7 +24,8 @@ flowchart LR
 omitted when using the decoder as a library. `formats/` owns dispatch and preserved
 trees. `inputs/` owns acquisition and replay. `pipeline.py` handles classification,
 summary counters and persistence. `storage/001_initial.sql` is the explicit initial
-migration, followed by 002_receiver_status.sql for persisted RF samples; newer unknown database versions are refused by writers. `domain/` projects readable CAP fields, declared lifecycle and derived geometry
+migration, followed by 002_receiver_status.sql for persisted RF samples and
+003_recoveries.sql for auditable reinterpretation of rejected observations; newer unknown database versions are refused by writers. `domain/` projects readable CAP fields, declared lifecycle and derived geometry
 from preserved trees without writing evidence. `api/` has no receiver startup hook
 or mutation routes. `web/` contains all necessary UI assets.
 
@@ -94,3 +95,53 @@ before releasing images; operator pull/up updates retain the local TOML and name
 archive. compose.live.yaml is the source-build developer alternative, while the
 repository's compose.yaml is the replay demo. Current install/update instructions
 are centralized in docker-live.md and the deployment contract in AGENTS.md.
+
+## Header recovery and lifecycle display
+
+At exclusive writer startup, eligible retained complete-message failures are replayed
+through the corrected decoder. Only one successfully decoded message with identical
+assembled bytes and transport ID can be promoted. Its observation ID, session/source,
+reception/processing clocks, raw TS, assembled bytes and offsets stay unchanged.
+`observation_recoveries` retains the prior reason, header/body interpretation and CRC
+fields, plus recovery time. Historical session counters remain historical; a separate
+recovered count and startup health event report corrections. A second startup does
+not create duplicate deliveries. Packet-loss/timeout fragments are never stitched.
+The read-only API does not perform recovery or start capture.
+
+The alert inbox includes unknown and malformed content for inspection, excluding only
+heartbeat/Link Tests and proper CAP Cancel cards. Cancel records remain available in
+cancellation history and the diagnostic archive. Referenced alert details include
+cancellation info blocks, text, instructions and links to full original evidence.
+A new Alert containing all-clear language remains independent; text never drives
+reference lifecycle. Cancellation and identity conflict checks stay source-scoped.
+An unmatched cancellation remains in history until its target arrives.
+
+XML text previews and CLI JSONL respect XML encoding; raw downloads are unchanged.
+Undecodable content has a hexadecimal preview. Unknown encodings cannot crash ingestion.
+Storage usage and the configured archive stop threshold are visible through health/UI.
+
+## Receive-to-display limit audit
+
+- UDP accepts raw TS datagrams up to the IPv4 UDP receive buffer size and checks the
+  configured receiver source. RTP/non-TS datagrams remain explicit diagnostics; the
+  app does not silently parse them as raw TS. No geographic or alert-text filter runs.
+- TS checks reject broken fragment sequence/continuity, transport errors, conflicting
+  assemblies, mismatched IDs, bad CRC and non-FF stuffing. Correct messages after a
+  rejected assembly still proceed. The supplied header variants and full two-byte
+  body length are covered by regression tests.
+- Configurable defaults are 1 MiB body, 8192 fragments, 16 simultaneous assemblies
+  and 30-second incomplete-assembly timeout. The body limit applies to the actual
+  two-byte length, not unrelated header fields. These are resource bounds, not a
+  whitelist of alerts. Timeout/sequence failures retain their evidence.
+- XML parsing retains invalid/unknown documents as inspectable messages. DTD/entity
+  expansion remains disabled; depth 64 and 10,000-element bounds protect the parser.
+  Unsupported encodings now produce a visible parse failure instead of terminating
+  ingestion. Missing schema/signature configuration never gates acceptance/display.
+- The inbox shows all non-heartbeat/non-Link-Test contents, including new statuses,
+  unknown roots and malformed XML. Proper Cancel has separate history and attaches
+  to its target; all-clear wording never hides a new Alert. Source/status selectors
+  and pagination remain explicit presentation choices.
+- The default 512 MiB database+WAL stop threshold remains configurable; 80% and full
+  usage now show a UI warning, and quota stops have a specific health event. Rejected
+  retention remains newest 1000; accepted data is not silently pruned. Physical disk
+  exhaustion and unobserved protocol variants remain operational limitations.

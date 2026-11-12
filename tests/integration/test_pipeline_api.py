@@ -50,7 +50,7 @@ def test_replay_storage_restart_api(tmp_path):
         assert "script-src" in api.get("/").headers["content-security-policy"]
         assert b"textContent" in api.get("/assets/app.js").content
     s = Store(config.database)
-    assert s.db.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert s.db.execute("PRAGMA user_version").fetchone()[0] == 3
     assert s.raw(link["id"], "header").hex() == "2f0000ff6af3c24c00000001bf"
     s.close()
 

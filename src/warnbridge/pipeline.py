@@ -6,8 +6,9 @@ from pathlib import Path
 from typing import Any
 
 from warnbridge.config import Config
-from warnbridge.formats.xml import parse_body
+from warnbridge.formats.xml import parse_body, readable_text
 from warnbridge.inputs.streams import Chunk, Journal
+from warnbridge.recovery import recover_rejections
 from warnbridge.storage.store import Store
 from warnbridge.transport.decoder import Decoder, Event
 
@@ -32,9 +33,14 @@ class Ingestor:
             raise ValueError("another ingestion worker owns this database") from None
         try:
             self.store = Store(config.database, max_rejected=config.max_rejected)
+            recovered = recover_rejections(self.store, config)
             with self.store.db:
                 self.store.db.execute("UPDATE sessions SET state='abandoned' WHERE state='running'")
             self.sid = self.store.start_session(source, identity)
+            if recovered:
+                self.store.health_event(
+                    self.sid, "recovered_observations", f"{recovered} retained failures recovered"
+                )
             self.decoder = Decoder(config.pid, config.limits)
         except BaseException:
             if hasattr(self, "store"):
@@ -92,9 +98,7 @@ class Ingestor:
                     },
                     "duplicate": count > 1,
                     "body_base64": base64.b64encode(event.body).decode("ascii"),
-                    "xml": parsed.xml.decode("utf-8", errors="replace")
-                    if parsed and parsed.xml is not None
-                    else None,
+                    "xml": readable_text(parsed.xml) if parsed and parsed.xml is not None else None,
                     "fields": parsed.fields if parsed else {},
                 }
             )
@@ -115,6 +119,11 @@ class Ingestor:
                     if p.exists()
                 )
                 if size >= self.config.max_database_bytes:
+                    self.store.health_event(
+                        self.sid,
+                        "storage_quota_reached",
+                        "Archive limit reached; archive data or increase max_database_bytes",
+                    )
                     raise OSError("database quota reached; archive evidence before restarting")
                 if chunk.error:
                     self.decoder.counts["input_errors"] += 1

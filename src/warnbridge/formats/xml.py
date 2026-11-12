@@ -1,5 +1,6 @@
 """Hardened, bounded XML views. Original bytes are never rewritten."""
 
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from io import BytesIO
@@ -56,6 +57,53 @@ def one(node: Element, namespace: str, key: str) -> str:
     return found[0] if len(found) == 1 else ""
 
 
+def xml_width(data: bytes) -> int:
+    if data.startswith(
+        (b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff", b"\x00\x00\x00<", b"<\x00\x00\x00")
+    ):
+        return 4
+    if data.startswith((b"\xff\xfe", b"\xfe\xff", b"\x00<", b"<\x00")):
+        return 2
+    return 1
+
+
+def xml_view(body: bytes) -> bytes:
+    width = xml_width(body)
+    # The observed transport adds one byte, not an encoded XML NUL character.
+    # Never remove the last byte of a complete UTF-16/32 code unit.
+    if body.endswith(b"\x00") and (width == 1 or len(body) % width == 1):
+        return body[:-1]
+    return body
+
+
+def readable_text(data: bytes) -> str:
+    """Decode a display copy; downloads always return the untouched byte stream."""
+    encoding = "utf-8-sig"
+    if xml_width(data) == 4:
+        encoding = (
+            "utf-32"
+            if data.startswith((b"\xff\xfe", b"\x00\x00\xfe\xff"))
+            else ("utf-32-be" if data.startswith(b"\x00") else "utf-32-le")
+        )
+    elif xml_width(data) == 2:
+        encoding = (
+            "utf-16"
+            if data.startswith((b"\xff\xfe", b"\xfe\xff"))
+            else ("utf-16-be" if data.startswith(b"\x00") else "utf-16-le")
+        )
+    else:
+        declaration = re.match(rb"""\s*<\?xml\s[^?]*encoding\s*=\s*["']([^"']+)["']""", data[:1024])
+        if declaration:
+            encoding = declaration[1].decode("ascii", errors="replace")
+    try:
+        text = data.decode(encoding)
+        if any(ord(char) < 32 and char not in "\t\r\n" for char in text):
+            raise ValueError("binary controls")
+        return text
+    except (LookupError, UnicodeError, ValueError):
+        return "Binary or undecodable content (hex):\n" + data.hex(" ")
+
+
 def parse_body(
     body: bytes, *, max_bytes: int = 1024 * 1024, max_depth: int = 64, max_elements: int = 10000
 ) -> Parsed:
@@ -64,7 +112,7 @@ def parse_body(
         result.classification = "heartbeat"
         return result
     # The one terminal NUL is an observed framing convention, not arbitrary cleanup.
-    xml = body[:-1] if body.endswith(b"\x00") and b"\x00" not in body[:4] else body
+    xml = xml_view(body)
     result.xml = xml
     if len(xml) > max_bytes:
         result.xml_state, result.reason = "invalid", "xml_size_limit"
@@ -92,7 +140,7 @@ def parse_body(
         if root is None:
             raise ValueError("empty_xml")
         result.xml_state = "well_formed"
-    except (DefusedXmlException, ParseError, ValueError) as exc:
+    except (DefusedXmlException, ParseError, ValueError, LookupError, UnicodeError) as exc:
         result.xml_state, result.reason = "invalid", type(exc).__name__ + ": " + str(exc)[:200]
         return result
     result.fields["tree"] = tree_view(root)

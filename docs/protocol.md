@@ -39,19 +39,31 @@ CRC and at most one fragment's stuffing).
 | 2 | 2 | observed 00FF; raw |
 | 4 | 4 | repeated transport ID, must match outer ID |
 | 8 | 1 | observed 00; raw |
-| 9 | 4 | big-endian exact body length |
-| 13 | length | body retained byte-for-byte |
-| next | 4 | big-endian stored CRC |
+| 9 | 1 | count `N` of three-byte header entries |
+| 10 | 3 × N | entry bytes, preserved without normative semantic claims |
+| 10 + 3 × N | 1 | observed payload discriminator: 00 CMAC, 01 CAP |
+| 11 + 3 × N | 2 | big-endian exact body length |
+| H = 13 + 3 × N | length | body retained byte-for-byte |
+| H + length | 4 | big-endian stored CRC |
 | remainder | variable | must all be FF |
+
+The previous four-byte length interpretation at offset 9 was wrong. The original
+heartbeat/Link Test vectors had zero count/discriminator bytes, hiding that error.
+Six user-supplied retained observations validate the variable layout: 13-byte CAP
+headers and 16-byte CMAC/CAP headers, complete bodies, matching CRCs and FF stuffing.
+Regression coverage also exercises multiple entries and headers spanning packets.
+The decoder uses these structural offsets, never an XML search or content heuristic.
+Unknown discriminator values are preserved and body dispatch still uses the XML root.
 
 Unknown header values do not acquire invented protocol/version names: exact header
 hex and `observed_header_profile=false` appear in observation metadata. Structural
-integrity and body dispatch remain separate. CRC covers the 13-byte header and
+integrity and body dispatch remain separate. CRC covers the complete variable header and
 exact declared body: poly 04C11DB7, init FFFFFFFF, non-reflected, xorout 0. Ordinary
 zlib CRC is not interchangeable. A transport rejection cannot enter messages/alerts.
 
 CMAC body contains one terminal NUL in supplied evidence. Parsing removes only
-one terminal NUL in a separate XML view. Original body and complete assembled
+one terminal transport NUL in a separate XML view, respecting UTF-16/32 code-unit
+boundaries. Original body and complete assembled
 bytes, including FF stuffing, remain in each observation. No tag repair, inner
 NUL removal or whitespace trimming. Heartbeat is an exact 17-byte body match.
 
@@ -86,7 +98,8 @@ not authentication or successful schema validation.
 
 At read time, Actual/Public Alert/Update content can be shown as superseded or
 cancelled by a later Actual/Public Update/Cancel with an exact reference triple,
-the same sender, and a later parseable sent time. Resolution is independent of
+matching status/scope, and a parseable sent time at or after the target
+time. A different sender is allowed when the reference explicitly names the target. Resolution is independent of
 arrival order. Live sources form one source group; imports/replay cannot cancel
 live data. Mixed-source, conflicting identities, simultaneous Update/Cancel times
 and reference-query overflow require review. No evidence is overwritten, deleted
@@ -102,8 +115,9 @@ bounds are 4–4096 vertices per polygon and 0 < circle radius <= 10,000 km; the
 not CAP schema limits. Leaflet renders the geometry over a bundled Natural Earth
 reference basemap, with optional online street tiles; see maps.md. No geocode
 boundary, targeting or geographic relevance is inferred. Schema/signature/geography validation states are unchanged.
-CMAC gets a conservative original-leaf-field view, without assumed CAP mapping,
-CMAC geography or lifecycle. A current CMAC schema and real alert sample are pending.
+CMAC retains an original-leaf-field view and readable alert text. Its named sent/expiry
+fields support Active/Expired timing; a uniquely matching explicit CAP identity can
+carry cancellation status into its CMAC counterpart. No geographic boundary is inferred. A current CMAC schema remains pending; the retained-failure export supplies real alert samples.
 
 ## Identity and clocks
 

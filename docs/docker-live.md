@@ -174,3 +174,37 @@ local TOML with `sudoedit /opt/warnbridge/config/local.docker.toml`, then run
 The helper refuses public/wildcard, loopback or Docker bridge addresses and will not overwrite the
 local file. If DHCP changes the host's address, update the bind/return address and
 allowed subnet settings before recreating the containers.
+
+## Variable-header and cancellation update (schema 3)
+
+This update migrates schema 2 to 3 and automatically retries eligible retained
+complete-message failures when the receiver starts. It preserves their observation
+IDs, source sessions, original reception/processing times and byte evidence. Recovered
+deliveries appear in the inbox or cancellation history. Existing session failure
+counters remain historical; `/api/v1/metrics.recovered_observations` reports recoveries.
+No Compose layout change, config regeneration or raw recording is needed.
+
+Before this schema update, an optional consistent backup can be made inside the
+existing archive volume while the old services are running:
+
+```sh
+sudo docker compose -f /opt/warnbridge/compose.yaml exec -T web python - <<'PY'
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+from warnbridge.config import load_config
+path = Path(load_config('/app/config/live.toml').database)
+backup = path.with_name('before-header-fix-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '.db')
+with sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True) as source:
+    with sqlite3.connect(backup) as target:
+        source.backup(target)
+print(backup)
+PY
+sudo docker compose -f /opt/warnbridge/compose.yaml pull
+sudo docker compose -f /opt/warnbridge/compose.yaml up -d
+```
+
+Refresh the UI after both services restart. The normal archive volume is retained.
+Do not roll an old schema-2 image back onto a migrated schema-3 archive; use a
+consistent pre-update backup for that rollback. Backup files live in the same volume
+until copied elsewhere; they are not a backup against loss of that volume.

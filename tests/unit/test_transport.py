@@ -99,7 +99,7 @@ def test_discontinuity_prevents_join():
     [
         (lambda p: p.__setitem__(30, p[30] ^ 1), "crc_mismatch"),
         (lambda p: p.__setitem__(-1, 0), "non_ff_stuffing"),
-        (lambda p: p.__setitem__(slice(21, 25), b"\xff" * 4), "body_size_limit"),
+        (lambda p: p.__setitem__(slice(21, 25), b"\xff" * 4), "truncated_message_header"),
         (lambda p: p.__setitem__(7, 5), "inner_outer_id_mismatch"),
         (lambda p: p.__setitem__(1, p[1] & ~0x40), "fragment_index_limit_or_pusi"),
     ],

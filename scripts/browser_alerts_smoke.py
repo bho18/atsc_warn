@@ -41,7 +41,7 @@ with sync_playwright() as p:
 
     def detail_route(request):
         path = urlparse(request.request.url).path
-        if path.endswith("/raw"):
+        if path.endswith(("/raw", "/text")):
             request.continue_()
             return
         response = request.fetch()
@@ -69,15 +69,15 @@ with sync_playwright() as p:
     assert not page.locator("#heartbeatDot").get_attribute("data-observation")
     assert not page.locator("#diagnosticArchive").is_visible()
     page.locator("#source").select_option("replay")
-    expect(page.locator(".alert-card")).to_have_count(8)
+    expect(page.locator(".alert-card")).to_have_count(7)
     expect(page.locator("#alertCards")).not_to_contain_text("cmac link test")
     page.locator("#alertStatus").select_option("Test")
     expect(page.locator(".alert-card")).to_have_count(2)
-    expect(page.locator("#alertCards")).to_contain_text("Test · declared")
+    expect(page.locator("#alertCards")).to_contain_text("Test")
     page.locator("#alertStatus").select_option("Actual")
-    expect(page.locator(".alert-card")).to_have_count(6)
+    expect(page.locator(".alert-card")).to_have_count(5)
     page.get_by_role("button", name="CMAC Alert", exact=True).click()
-    expect(page.locator("#alertDetail")).to_contain_text("current schema unverified")
+    page.get_by_text("Original CMAC fields", exact=True).click()
     expect(page.locator("#alertDetail")).to_contain_text("Preserve this unknown field.")
     page.get_by_role("button", name="DEMO ONLY — Flood warning example", exact=True).first.click()
     expect(page.locator("#alertDetail")).to_contain_text("Example instructions appear here")
@@ -100,7 +100,7 @@ with sync_playwright() as p:
     page.locator("#alertLanguage").select_option("0")
     page.locator("#close").click()
     page.locator("#alertStatus").select_option("")
-    expect(page.locator("#alertCards")).to_contain_text("Cancelled by reference")
+    expect(page.locator("#alertCards")).to_contain_text("Cancelled")
     expect(page.locator("#alertCards")).to_contain_text("Expired")
     page.evaluate("""window.beats=0;document.getElementById('heartbeatDot').addEventListener(
         'animationstart',e=>{window.beats++;e.target.dataset.beats=String(window.beats);});""")

@@ -92,7 +92,7 @@ def test_cmac_preserves_leaf_names_repeats_and_unknown_fields_without_cap_guessi
     )
     alert = project(raw)
     assert alert["protocol"] == "CMAC" and alert["status"] == "Actual"
-    assert alert["lifecycle"] == "unverified_cmac" and alert["infos"] == []
+    assert alert["lifecycle"] == "unknown" and alert["infos"] == []
     assert "current schema unverified" in alert["interpretation"]
     segments = alert["segments"]
     assert {"field": "CMAC_unknown_extension", "value": "Preserve this unknown field."} in segments

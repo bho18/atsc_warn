@@ -158,6 +158,18 @@ def cap_info(node: Tree) -> dict[str, Any]:
     return result
 
 
+def timing(status: str | None, periods: list[tuple[str, str]], now: datetime) -> str:
+    parsed = [(utc_time(e), utc_time(x)) for e, x in periods]
+    if not parsed or any(e is None or x is None or e >= x for e, x in parsed):
+        return "unknown"
+    valid = [(e, x) for e, x in parsed if e is not None and x is not None]
+    if all(x <= now for _, x in valid):
+        return "expired"
+    if any(e <= now < x for e, x in valid):
+        return "active" if status == "Actual" else "non_actual"
+    return "scheduled"
+
+
 def project_alert(protocol: str, fields: Tree, *, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     root = fields.get("tree", {})
@@ -173,6 +185,7 @@ def project_alert(protocol: str, fields: Tree, *, now: datetime | None = None) -
         "infos": [],
         "lifecycle": "unknown",
         "relationships": [],
+        "cancellations": [],
         "issues": [],
     }
     if protocol == "CAP":
@@ -194,35 +207,27 @@ def project_alert(protocol: str, fields: Tree, *, now: datetime | None = None) -
                 "acknowledgement" if result["message_type"] == "Ack" else "error_message"
             )
         elif result["message_type"] in ("Alert", "Update") and result["infos"]:
-            expires = [utc_time(info["expires"] or "") for info in result["infos"]]
-            effective = [
-                utc_time(info["effective"] or result["sent"] or "") for info in result["infos"]
-            ]
-            if all(t is not None and t <= now for t in expires):
-                result["lifecycle"] = "expired"
-            elif all(t is not None for t in expires) and all(t is not None for t in effective):
-                periods = [
-                    (e, x)
-                    for e, x in zip(effective, expires, strict=True)
-                    if e is not None and x is not None
-                ]
-                if any(e <= now < x for e, x in periods):
-                    result["lifecycle"] = "active" if result["status"] == "Actual" else "non_actual"
-                elif any(now < e < x for e, x in periods):
-                    result["lifecycle"] = "scheduled"
+            result["lifecycle"] = timing(
+                result["status"],
+                [
+                    (info["effective"] or result["sent"] or "", info["expires"] or "")
+                    for info in result["infos"]
+                ],
+                now,
+            )
         if not result["infos"] and result["message_type"] != "Cancel":
             result["issues"].append("No CAP info blocks supplied")
     elif protocol == "CMAC":
         result["interpretation"] = "Experimental CMAC field view; current schema unverified"
-        result["lifecycle"] = "unverified_cmac"
         for output, source in (
             ("status", "CMAC_status"),
             ("message_type", "CMAC_message_type"),
-            ("sender", "CMAC_sending_gateway_id"),
+            ("sender", "CMAC_sender"),
             ("identifier", "CMAC_message_number"),
             ("sent", "CMAC_sent_date_time"),
         ):
             result[output] = value(root, CMAC, source)
+        result["sender"] = result["sender"] or value(root, CMAC, "CMAC_sending_gateway_id")
         # Every CMAC leaf remains available under its original field name, including
         # repeated text/language/area segments. No speculative CAP normalization.
         result["segments"] = []
@@ -233,8 +238,26 @@ def project_alert(protocol: str, fields: Tree, *, now: datetime | None = None) -
                     result["segments"].append(
                         {"field": node["tag"].split("}", 1)[1], "value": text}
                     )
-        result["issues"].append(
-            "CMAC enum, text/area mapping and lifecycle need an actual alert/schema"
+        expiries = [
+            s["value"] for s in result["segments"] if s["field"] == "CMAC_expires_date_time"
+        ]
+        result["expires"] = expiries
+        if result["message_type"] in ("Alert", "Update"):
+            result["lifecycle"] = timing(
+                result["status"], [(result["sent"] or "", expiry) for expiry in expiries], now
+            )
+        result["preview"] = next(
+            (
+                segment["value"]
+                for field in (
+                    "CMAC_long_text_alert_message",
+                    "CMAC_text_alert_message",
+                    "CMAC_short_text_alert_message",
+                )
+                for segment in result["segments"]
+                if segment["field"] == field
+            ),
+            None,
         )
     else:
         result["issues"].append("Unsupported alert protocol")
@@ -244,5 +267,7 @@ def project_alert(protocol: str, fields: Tree, *, now: datetime | None = None) -
         f"CMAC {result['message_type'] or 'message'}"
         if protocol == "CMAC"
         else f"CAP {result['message_type'] or 'message'}"
+        if protocol == "CAP"
+        else "Unrecognized message · inspect original bytes"
     )
     return result

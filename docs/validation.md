@@ -545,3 +545,48 @@ Full validation passed: 154 tests, Ruff lint/format, strict mypy and the unchang
 The production shell examples passed bash syntax checking. No sudo command, host
 filesystem modification or hardware operation was executed against the ThinkCentre
 from cloud; these are the commands for the user to run locally.
+
+## Variable headers, retained recovery and lifecycle UI (November 12, 2026)
+
+Corrected the header interpretation exposed by the user's six retained observations:
+counted three-byte entries, a payload discriminator and two-byte body length. The
+original zero-count CMAC/heartbeat vectors still decode unchanged. Synthetic
+regressions cover zero/one/multiple/255 entries, spanning headers, opaque payload
+values, 65,535-byte bodies, configured resource bounds and corrupted headers.
+No private raw captures, signatures, certificates or alert contents were added to Git.
+
+Executed locally:
+
+- `./scripts/validate.sh`: Ruff lint/format and strict mypy passed; **188 tests passed**.
+  Reconstructed replay: four packets, two messages, two CRC passes, no rejections.
+- Private export harness: all six original TS sequences decode; all three distinct
+  XML documents parse. A schema-3 archive seeded with the exported rejected rows
+  recovers six deliveries with zero remaining failures. IDs, original clocks,
+  source/session associations, raw TS, assembled bytes and offsets are unchanged;
+  a second startup adds no recovery/delivery. Two inbox contents and one cancellation
+  history content result. A separate synthetic test covers schema-2 migration/recovery.
+- `python -m scripts.browser_lifecycle_smoke`: passed with local Chromium at desktop
+  and 390-pixel mobile widths. Checked Active/Expired/Cancelled badges, cancellation
+  arriving while the inspector is open, extra cancellation instructions, all-clear
+  formatted as Alert, unknown content, accented/entity-decoded text, and direct
+  retained-packet downloads. Screenshot inspection caught and corrected cancellation
+  panel contrast against the existing dark theme.
+- Existing `browser_alerts_smoke.py` and `browser_maps_smoke.py`: passed against a
+  synthetic replay server, including source/status filters, languages, CMAC text,
+  heartbeat freshness, offline maps, controls/popups, synthetic tile responses,
+  mobile layouts and no unexpected script execution or external message-URL fetches.
+- All three Compose configurations validate. No physical tuner or user LAN contact.
+
+The receive-to-display audit is documented in architecture.md. It also fixed hidden
+unknown/malformed inbox content, unsupported-encoding exceptions, UTF-8-only previews,
+source-unscoped identity conflicts, unnecessary same-sender cancellation restrictions,
+and invisible archive quota pressure. Cancellation uses explicit references and
+matching status/scope; all-clear wording cannot cancel another message. CMAC timing
+uses named sent/expiry fields and explicit CAP identity linkage. Unknown timing and
+inconsistent/conflicting references remain visible for review rather than disappearing.
+
+The existing Starlette/httpx deprecation warning is unchanged. These tests establish
+behavior for the supplied and synthetic variants, not unseen transport layouts.
+Unattended physical receiver operation after installation remains a local check.
+Image publication and pull verification are tracked by the release workflow; local
+checks alone do not establish that the published `edge` tag has moved.

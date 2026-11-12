@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from warnbridge.config import Config
+from warnbridge.formats.xml import readable_text
 from warnbridge.storage.store import Store
 
 
@@ -57,12 +58,26 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @app.get("/api/v1/health")
     def health(db: DB) -> dict[str, Any]:
+        archive_bytes = sum(
+            path.stat().st_size
+            for path in (Path(config.database), Path(config.database + "-wal"))
+            if path.exists()
+        )
         return {
             **db.health(
                 rf_stale_after=config.rf_stale_after,
                 heartbeat_stale_after=config.heartbeat_stale_after,
             ),
             "display_timezone": config.timezone,
+            "storage": {
+                "bytes": archive_bytes,
+                "limit_bytes": config.max_database_bytes,
+                "state": "full"
+                if archive_bytes >= config.max_database_bytes
+                else "near_limit"
+                if archive_bytes >= config.max_database_bytes * 0.8
+                else "ok",
+            },
         }
 
     @app.get("/api/v1/receivers")
@@ -126,6 +141,18 @@ def create_app(config: Config | None = None) -> FastAPI:
             headers={"Content-Disposition": f'attachment; filename="{part}.bin"'},
         )
 
+    @app.get("/api/v1/messages/{mid}/text")
+    def text_view(
+        mid: str,
+        db: DB,
+        part: Literal["xml", "body"] = "xml",
+        observation: int | None = None,
+    ) -> Response:
+        data = db.raw(mid, part, observation)
+        if data is None:
+            raise HTTPException(404, "message text not found")
+        return Response(readable_text(data), media_type="text/plain")
+
     @app.get("/api/v1/alerts")
     def alerts(
         db: DB,
@@ -135,20 +162,50 @@ def create_app(config: Config | None = None) -> FastAPI:
             "live", "all", "file", "stdin", "replay", "live_udp", "live_hdhomerun"
         ] = "live",
         status: str | None = None,
+        cancellations: bool = False,
     ) -> dict[str, Any]:
-        return db.alerts(limit, offset, source=None if source == "all" else source, status=status)
+        return db.alerts(
+            limit,
+            offset,
+            source=None if source == "all" else source,
+            status=status,
+            cancellations=cancellations,
+        )
 
     @app.get("/api/v1/diagnostics")
     def diagnostics(
         db: DB, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)
     ) -> dict[str, Any]:
         rows = db.db.execute(
-            "SELECT id,session_id,processed_at,reason,length(raw_ts) AS bytes "
+            "SELECT id,session_id,received_at,processed_at,reason,length(raw_ts) AS bytes "
             "FROM observations WHERE state='rejected' ORDER BY id DESC "
             "LIMIT ? OFFSET ?",
             (limit, offset),
         )
-        return {"items": [dict(r) for r in rows], "limit": limit, "offset": offset}
+        total = db.db.execute(
+            "SELECT count(*) FROM observations WHERE state='rejected'"
+        ).fetchone()[0]
+        return {"items": [dict(r) for r in rows], "limit": limit, "offset": offset, "total": total}
+
+    @app.get("/api/v1/diagnostics/{oid}/raw")
+    def diagnostic_raw(
+        oid: int,
+        db: DB,
+        part: Literal["header", "body", "assembled", "raw_ts"] = "raw_ts",
+    ) -> Response:
+        row = db.db.execute(
+            f"SELECT {part} FROM observations WHERE id=? AND state='rejected'",
+            (oid,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(404, "retained failure not found")
+        return Response(
+            bytes(row[0]),
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f'attachment; filename="failure-{oid}-{part}.bin"',
+            },
+        )
 
     web = Path(__file__).resolve().parent.parent / "web"
     app.mount("/assets", StaticFiles(directory=web), name="assets")

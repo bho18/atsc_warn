@@ -18,6 +18,8 @@ authorizes WarnBridge container image publication to GHCR for pull-based install
 and iterative image updates. Other package publication and private captures still
 require separate authorization. Do not copy historical PBS source without verified
 licensing. No credentials in source or logs.
+UI: keep one small signature-verification note; do not repeat authentication/schema
+disclaimers across cards, badges and message details. Preserve technical metadata.
 
 Read docs/protocol.md, docs/evidence.md, docs/architecture.md and docs/deployment.md.
 Before completion run offline tests, lint, type checks and an end-to-end replay/API

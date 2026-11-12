@@ -4,12 +4,21 @@ from tests.fixtures.golden import packet
 from warnbridge.transport.crc import crc32_mpeg2
 
 
-def wrap(body: bytes, ident: int = 0x6AF3C24C, cc: int = 0, first: int = 0x2F) -> bytes:
+def wrap(
+    body: bytes,
+    ident: int = 0x6AF3C24C,
+    cc: int = 0,
+    first: int = 0x2F,
+    entries: tuple[int, ...] = (),
+    payload_type: int = 0,
+) -> bytes:
     header = (
         bytes([first, 0, 0, 255])
         + ident.to_bytes(4, "big")
-        + b"\x00"
-        + len(body).to_bytes(4, "big")
+        + bytes([0, len(entries)])
+        + b"".join(entry.to_bytes(3, "big") for entry in entries)
+        + bytes([payload_type])
+        + len(body).to_bytes(2, "big")
     )
     raw = header + body
     raw += crc32_mpeg2(raw).to_bytes(4, "big")

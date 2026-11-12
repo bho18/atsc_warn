@@ -1,6 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let offset = 0, mode = 'alerts', view = 'deliveries', timezone = 'America/Chicago';
+let failureOffset = 0, cancellationOffset = 0;
 let refreshPending = false;
 let refreshSerial = 0, inspectSerial = 0, historySerial = 0;
 let selectedMessage = null, historyOffset = 0, selectedDelivery = null, selectedAlertState = '';
@@ -44,7 +45,7 @@ function renderRF(health) {
   $('rfSignal').textContent = receiver.error ? `Checked ${age} · ${receiver.error}` : `Strength ${value('ss')} · Quality ${value('snq')} · Symbol ${value('seq')} · checked ${age}`;
 }
 let heartbeatSnapshot = null, heartbeatAt = 0, heartbeatOnline = false, heartbeatId = null;
-const lifecycleNames = {active:'In effect · declared',non_actual:'Non-Actual message',scheduled:'Future effective time',expired:'Expired',cancellation:'Cancellation message',cancelled:'Cancelled by reference',superseded:'Superseded by update',identity_conflict:'Identity conflict · review',reference_review:'References need review',provenance_review:'Select a source to review',unverified_cmac:'CMAC · needs field review',acknowledgement:'Acknowledgement',error_message:'Error message',unknown:'Timing unknown'};
+const lifecycleNames = {active:'Active',non_actual:'Non-Actual message',scheduled:'Future effective time',expired:'Expired',cancellation:'Cancellation message',cancelled:'Cancelled',superseded:'Superseded by update',identity_conflict:'Identity conflict · review',reference_review:'References need review',provenance_review:'Select a source to review',unverified_cmac:'CMAC · needs field review',acknowledgement:'Acknowledgement',error_message:'Error message',unknown:'Status unknown'};
 function node(tag, text, className) {
   const item = document.createElement(tag);
   if (text !== undefined && text !== null) item.textContent = String(text);
@@ -79,23 +80,24 @@ function metadata(parent, entries) {
 }
 function alertBadges(parent, item) {
   const a=item.alert, badges=node('div',null,'badges');
-  badges.append(badge(`${a.status || 'Unknown'} · declared`,a.status==='Actual' ? 'actual' : ''),badge(a.message_type || 'Type unknown'),badge(a.protocol));
+  badges.append(badge(a.status || 'Unknown',a.status==='Actual' ? 'actual' : ''),badge(a.message_type || 'Type unknown'),badge(a.protocol));
   for (const source of item.sources) badges.append(badge(sourceName(source),source.startsWith('live_') ? '' : 'review'));
-  badges.append(badge(lifecycleNames[a.lifecycle] || a.lifecycle,['identity_conflict','reference_review','unverified_cmac'].includes(a.lifecycle) ? 'review' : ''));
+  badges.prepend(badge(lifecycleNames[a.lifecycle] || a.lifecycle,`lifecycle ${a.lifecycle}`));
   parent.append(badges);
 }
 function renderAlerts(data) {
   $('alertCards').replaceChildren();
   for (const item of data.items) {
-    const a=item.alert, info=a.infos[0], card=node('article',null,`alert-card ${a.status==='Actual' ? '' : 'non-actual'} ${a.protocol==='CMAC' || item.conflict ? 'review' : ''}`);
+    const a=item.alert, info=a.infos[0], card=node('article',null,`alert-card ${a.status==='Actual' ? '' : 'non-actual'} ${a.protocol==='unknown' || item.conflict ? 'review' : ''}`);
     alertBadges(card,item);
     const title=node('button',a.headline,'alert-title');title.onclick=()=>inspect(item.id);card.append(title);
     if (info) {
       card.append(node('p',[info.severity,info.urgency,info.certainty].filter(Boolean).join(' · ')));
       if (info.description) card.append(node('p',info.description,'alert-preview'));
-    } else if (a.protocol==='CMAC') card.append(node('p','CMAC content is ready for field review. Current alert schema and mappings remain unverified.'));
+    } else if (a.protocol==='CMAC' && a.preview) card.append(node('p',a.preview,'alert-preview'));
+    if(item.validation.xml==='invalid' || a.protocol==='unknown') card.append(node('p','Content needs review. Original bytes are available in the inspector.','state-warning'));
     card.append(node('p',`${a.sender || 'Sender unknown'} · ${a.identifier || 'Identifier unknown'}`,'content-identity'));
-    metadata(card,[['Received',item.last_received_at ? stamp(item.last_received_at) : 'Arrival unknown'],['XML sent',a.sent ? stamp(a.sent) : 'Not supplied'],['Expires',info?.expires ? stamp(info.expires) : 'Not supplied'],['Deliveries',String(item.delivery_count)]]);
+    metadata(card,[['Received',item.last_received_at ? stamp(item.last_received_at) : 'Arrival unknown'],['XML sent',a.sent ? stamp(a.sent) : 'Not supplied'],['Expires',info?.expires || a.expires?.[0] ? stamp(info?.expires || a.expires[0]) : 'Not supplied'],['Deliveries',String(item.delivery_count)]]);
     $('alertCards').append(card);
   }
   if (!data.items.length) {
@@ -127,17 +129,34 @@ function renderAlertDetail(item) {
   $('evidence').open=false;
   const a=item.alert,body=node('div',null,'alert-body');
   alertBadges(body,item);
-  body.append(node('p',`${a.interpretation}. Schema not configured; signature not checked.`,'notice'));
-  metadata(body,[['Sender / gateway',a.sender],['Identifier',a.identifier],['XML sent',a.sent ? stamp(a.sent) : 'Not supplied'],['Scope',a.scope || 'Not mapped'],['Last receipt',item.last_received_at ? stamp(item.last_received_at) : 'Arrival unknown'],['Timing / references',lifecycleNames[a.lifecycle] || a.lifecycle]]);
+  metadata(body,[['Sender / gateway',a.sender],['Identifier',a.identifier],['XML sent',a.sent ? stamp(a.sent) : 'Not supplied'],['Scope',a.scope || 'Not supplied'],['Last receipt',item.last_received_at ? stamp(item.last_received_at) : 'Arrival unknown'],['Timing / references',lifecycleNames[a.lifecycle] || a.lifecycle]]);
   if(a.infos.length) {
     const label=node('label','Language / information block','language-label'),select=node('select');select.id='alertLanguage';
     for(const [i,info] of a.infos.entries()) {const option=node('option',`${info.language} · ${info.event || `block ${i+1}`}`);option.value=String(i);select.append(option);}
     label.append(select);body.append(label);
     const content=node('div');body.append(content);renderInfo(content,a.infos[0]);select.onchange=()=>renderInfo(content,a.infos[Number(select.value)]);
   } else if(a.protocol==='CMAC') {
-    body.append(node('h3','CMAC field review'),node('p','The original field names and repeated values are shown below. No CAP conversion, CMAC lifecycle or inferred geographic boundary is applied.','muted'));
-    const dl=node('dl',null,'field-list');for(const segment of a.segments)dl.append(node('dt',segment.field),node('dd',segment.value));body.append(dl);
+    if(a.preview)body.append(node('h3','Message text'),node('p',a.preview,'message-text'));
+    const fields=node('details');fields.append(node('summary','Original CMAC fields'));
+    const dl=node('dl',null,'field-list');for(const segment of a.segments)dl.append(node('dt',segment.field),node('dd',segment.value));fields.append(dl);body.append(fields);
   } else body.append(node('p','No information blocks supplied. A cancellation can refer to an earlier alert without repeating its text.'));
+  if(a.cancellations?.length) {
+    const section=node('section',null,'cancellation-content');section.append(node('h3','Cancellation details'));
+    for(const cancellation of a.cancellations) {
+      section.append(node('p',`Cancelled · ${stamp(cancellation.sent)}`));
+      for(const info of cancellation.infos) {
+        const block=node('div',null,'cancellation-info');
+        block.append(node('h4',`${info.language} · ${info.headline || info.event || 'Cancellation'}`));
+        if(info.description)block.append(node('p',info.description,'message-text'));
+        if(info.instruction)block.append(node('p',info.instruction,'instructions message-text'));
+        for(const parameter of info.parameters)block.append(node('p',`${parameter.name}: ${parameter.value}`,'message-text'));
+        for(const area of info.areas)block.append(node('p',area.description));
+        section.append(block);
+      }
+      const button=node('button','Inspect full cancellation');button.onclick=()=>inspect(cancellation.message_id);section.append(button);
+    }
+    body.append(section);
+  }
   const relationships=node('div',null,'relationships');
   if(a.references)relationships.append(node('h4','Declared references'),node('p',a.references,'message-text'));
   if(item.relationships?.length) for(const ref of item.relationships) {
@@ -145,7 +164,6 @@ function renderAlertDetail(item) {
   }
   if(a.relationships.length) {relationships.append(node('h4','Later references in this source group'));for(const ref of a.relationships) {const b=node('button',`${ref.type} · ${stamp(ref.sent)}`);b.onclick=()=>inspect(ref.message_id);relationships.append(b);}}
   for(const issue of a.issues)relationships.append(node('p',issue,'state-warning'));
-  if(a.lifecycle_interpretation)relationships.append(node('p',a.lifecycle_interpretation,'muted'));
   body.append(relationships);target.append(body);
 }
 
@@ -153,6 +171,35 @@ function query(extra = {}) {
   const params = new URLSearchParams(extra);
   if ($('source').value) params.set('source',$('source').value);
   return params;
+}
+function renderFailures(data) {
+  $('failureItems').replaceChildren();
+  for(const item of data.items) {
+    const row=node('div',null,'diagnostic-row');
+    row.append(node('p',`#${item.id} · ${item.reason} · ${stamp(item.received_at || item.processed_at)} · ${item.bytes} TS bytes`));
+    for(const [part,label] of [['raw_ts','Download packets'],['assembled','Download assembled message'],['header','Download header']]) {
+      const link=node('a',label);link.href=`/api/v1/diagnostics/${item.id}/raw?part=${part}`;row.append(link);
+    }
+    $('failureItems').append(row);
+  }
+  if(!data.total)$('failureItems').append(node('p','No retained failures.'));
+  $('failurePage').textContent=`${data.total ? failureOffset+1 : 0}–${Math.min(failureOffset+10,data.total)} of ${data.total}`;
+  $('failurePrevious').disabled=failureOffset===0;
+  $('failureNext').disabled=failureOffset+10>=data.total;
+}
+function renderCancellations(data) {
+  $('cancellationSummary').textContent=`Cancellation history · ${data.total}`;
+  $('cancellationItems').replaceChildren();
+  for(const item of data.items) {
+    const row=node('div',null,'diagnostic-row'),button=node('button',`Inspect cancellation · ${stamp(item.alert.sent)}`);
+    button.onclick=()=>inspect(item.id);
+    row.append(button,node('p',`${item.alert.sender || 'Sender unknown'} · ${item.alert.identifier || 'Identifier unknown'}`));
+    $('cancellationItems').append(row);
+  }
+  if(!data.total)$('cancellationItems').append(node('p','No cancellations received in this source group.'));
+  $('cancellationPage').textContent=`${data.total ? cancellationOffset+1 : 0}–${Math.min(cancellationOffset+10,data.total)} of ${data.total}`;
+  $('cancellationPrevious').disabled=cancellationOffset===0;
+  $('cancellationNext').disabled=cancellationOffset+10>=data.total;
 }
 function cell(row, text, small) {
   const td = document.createElement('td');
@@ -204,7 +251,7 @@ async function inspect(id, delivery = null, resetHistory = true) {
     const params = new URLSearchParams({part});
     if (delivery) params.set('observation',delivery.id);
     const url=`/api/v1/messages/${id}/raw?${params}`;
-    const raw=await get(url,'text');
+    const raw=await get(`/api/v1/messages/${id}/text?${params}`,'text');
     if (serial!==inspectSerial) return;
     $('raw').textContent=raw;
     $('fields').textContent=JSON.stringify({content_id:id,classification:detail.classification,validation:detail.validation,
@@ -242,9 +289,13 @@ async function refresh(force = false) {
     if ($('classification').value) params.set('classification',$('classification').value);
     if (mode==='alerts') {params.set('source',$('source').value || 'all');if ($('alertStatus').value) params.set('status',$('alertStatus').value);params.delete('classification');}
     const endpoint=mode==='alerts' ? 'alerts' : view==='deliveries' ? 'deliveries' : 'messages';
-    const [health,metrics,data]=await Promise.all([get('/api/v1/health'),get('/api/v1/metrics'),get(`/api/v1/${endpoint}?${params}`)]);
+    const cancelParams=query({cancellations:true,limit:10,offset:cancellationOffset});
+    if(!cancelParams.has('source'))cancelParams.set('source','all');
+    const [health,metrics,data,failures,cancellations]=await Promise.all([get('/api/v1/health'),get('/api/v1/metrics'),get(`/api/v1/${endpoint}?${params}`),get(`/api/v1/diagnostics?limit=10&offset=${failureOffset}`), mode==='alerts' ? get(`/api/v1/alerts?${cancelParams}`) : Promise.resolve(null)]);
     if (serial!==refreshSerial) return;
     timezone=health.display_timezone;
+    $('storageNotice').hidden=!health.storage || health.storage.state==='ok';
+    if(health.storage && health.storage.state!=='ok') $('storageNotice').textContent=`Archive ${health.storage.state==='full' ? 'limit reached — reception stops' : 'nearing its limit'}: ${Math.round(health.storage.bytes/1048576)} of ${Math.round(health.storage.limit_bytes/1048576)} MiB. Archive data or increase the configured archive limit.`;
     $('timezone').textContent=timezone;
     renderRF(health);
     renderHeartbeat(health.connection);
@@ -252,10 +303,12 @@ async function refresh(force = false) {
     $('countLabel').textContent=mode==='alerts' ? `ALERT CONTENT · ${$('source').value==='live' ? 'LIVE' : 'FILTERED'}` : 'ARCHIVE TOTAL';
     $('count').textContent=mode==='alerts' ? data.total : `${metrics.messages} contents`;
     $('failureCount').textContent=`${metrics.deliveries} deliveries · ${metrics.retained_rejections} retained failures`;
+    renderFailures(failures);
+    if(cancellations)renderCancellations(cancellations);
     $('sessions').textContent=JSON.stringify(metrics.sessions,null,2);
     $('messages').replaceChildren();
     if (mode==='alerts') renderAlerts(data);
-    $('viewHelp').textContent=mode==='alerts' ? 'CAP and other CMAC messages. Heartbeats and Link Tests stay in diagnostics.' : view==='deliveries' ? 'Every reception gets a row, including repeated heartbeats and Link Tests.' : 'Identical content is grouped. Repeated broadcasts increase the delivery count; heartbeat content is constant.';
+    $('viewHelp').textContent=mode==='alerts' ? 'Received messages and their current status. Heartbeats and Link Tests are in Diagnostics.' : view==='deliveries' ? 'Every reception gets a row, including repeated heartbeats and Link Tests.' : 'Identical content is grouped. Repeated broadcasts increase the delivery count; heartbeat content is constant.';
     $('timeHeading').textContent=view==='deliveries' ? 'Received / source' : 'Last receipt / source';
     $('countHeading').textContent=view==='deliveries' ? 'Delivery' : 'Deliveries';
     for (const item of mode==='diagnostics' ? data.items : []) {
@@ -296,7 +349,10 @@ function changeView(next) {
 $('deliveriesTab').onclick=()=>changeView('deliveries');
 $('contentTab').onclick=()=>changeView('content');
 $('refresh').onclick=()=>refresh(true);
-for (const id of ['source','classification','alertStatus']) $(id).onchange=()=>{offset=0;selectedMessage=null;++inspectSerial;++historySerial;window.WarnBridgeMap.clear();$('detail').hidden=true;refresh(true);};
+$('failureCount').onclick=()=>{$('failurePanel').open=true;$('failurePanel').scrollIntoView({behavior:'smooth'});};
+for(const [id,delta] of [['failurePrevious',-10],['failureNext',10]]) $(id).onclick=()=>{failureOffset=Math.max(0,failureOffset+delta);refresh(true);};
+for(const [id,delta] of [['cancellationPrevious',-10],['cancellationNext',10]]) $(id).onclick=()=>{cancellationOffset=Math.max(0,cancellationOffset+delta);refresh(true);};
+for (const id of ['source','classification','alertStatus']) $(id).onchange=()=>{offset=0;cancellationOffset=0;selectedMessage=null;++inspectSerial;++historySerial;window.WarnBridgeMap.clear();$('detail').hidden=true;refresh(true);};
 $('previous').onclick=()=>{offset=Math.max(0,offset-20);refresh(true);};
 $('next').onclick=()=>{offset+=20;refresh(true);};
 $('historyPrevious').onclick=()=>{historyOffset=Math.max(0,historyOffset-10);loadHistory().catch(e=>{$('connection').textContent=e.message;});};
@@ -307,6 +363,7 @@ function changeMode(next) {
   $('alertsTab').setAttribute('aria-selected',String(mode==='alerts'));
   $('diagnosticsTab').setAttribute('aria-selected',String(mode==='diagnostics'));
   $('diagnosticArchive').hidden=mode!=='diagnostics';$('typeFilter').hidden=mode!=='diagnostics';
+  $('cancellationHistory').hidden=mode!=='alerts';
   $('alertCards').hidden=mode!=='alerts';$('statusFilter').hidden=mode!=='alerts';$('alertNotice').hidden=mode!=='alerts';
   $('viewTitle').textContent=mode==='alerts' ? 'Alert inbox' : 'Diagnostic archive';refresh(true);
 }

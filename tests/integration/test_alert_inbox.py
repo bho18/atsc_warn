@@ -84,14 +84,17 @@ def test_out_of_order_cap_references_are_source_scoped_and_not_overwrites(tmp_pa
         update = next(m for m in data["items"] if m["protocol_identifier"] == "demo-update")
         detail = api.get(f"/api/v1/messages/{update['id']}?source=live").json()
         assert detail["relationships"][0]["resolved_message_ids"] == [mid]
-        replay_cancel = api.get("/api/v1/alerts?source=replay").json()["items"][0]
+        replay_cancel = api.get("/api/v1/alerts?source=replay&cancellations=true").json()["items"][
+            0
+        ]
         assert api.get(f"/api/v1/messages/{replay_cancel['id']}?source=live").status_code == 404
         ingest(config, wrap(cancel))
         after = api.get(f"/api/v1/messages/{mid}?source=live").json()
         assert after["alert"]["lifecycle"] == "cancelled"
         assert after["alert"]["relationships"][-1]["type"] == "Cancel"
         assert api.get(f"/api/v1/messages/{mid}/raw").content == cap()
-        assert api.get("/api/v1/alerts").json()["total"] == 3  # No deletion on cancellation.
+        assert api.get("/api/v1/alerts").json()["total"] == 2  # Cancel is attached, not a card.
+        assert api.get("/api/v1/alerts?cancellations=true").json()["total"] == 1
 
 
 def test_foreign_sender_test_cancel_and_ambiguous_latest_references(tmp_path):
@@ -105,7 +108,8 @@ def test_foreign_sender_test_cancel_and_ambiguous_latest_references(tmp_path):
     )
     store = Store(config.database)
     original = next(m for m in store.alerts()["items"] if m["protocol_identifier"] == "demo-alert")
-    assert original["alert"]["relationships"] == []
+    assert original["alert"]["lifecycle"] == "cancelled"
+    assert len(original["alert"]["relationships"]) == 1  # Exact reference, delegated sender.
     store.close()
     ingest(config, wrap(cancel))
     ingest(config, wrap(cap("demo-update", "Update", references=REF, sent="2026-11-12T01:02:00Z")))
@@ -167,7 +171,7 @@ def test_synthetic_alert_demo_replays_all_seven_messages(tmp_path):
     with TestClient(create_app(config)) as api:
         assert api.get("/api/v1/alerts").json()["total"] == 0
         data = api.get("/api/v1/alerts?source=replay").json()
-        assert data["total"] == 7
+        assert data["total"] == 6
         assert any(m["alert"]["lifecycle"] == "cancelled" for m in data["items"])
         assert api.get("/api/v1/health").json()["connection"]["state"] == "waiting"
 
