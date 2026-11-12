@@ -39,7 +39,10 @@ def create_app(config: Config | None = None) -> FastAPI:
     @app.get("/api/v1/health")
     def health(db: DB) -> dict[str, Any]:
         return {
-            **db.health(rf_stale_after=config.rf_stale_after),
+            **db.health(
+                rf_stale_after=config.rf_stale_after,
+                heartbeat_stale_after=config.heartbeat_stale_after,
+            ),
             "display_timezone": config.timezone,
         }
 
@@ -57,7 +60,8 @@ def create_app(config: Config | None = None) -> FastAPI:
         limit: int = Query(50, ge=1, le=100),
         offset: int = Query(0, ge=0),
         classification: str | None = None,
-        source: Literal["file", "stdin", "replay", "live_udp", "live_hdhomerun"] | None = None,
+        source: Literal["live", "file", "stdin", "replay", "live_udp", "live_hdhomerun"]
+        | None = None,
     ) -> dict[str, Any]:
         return db.messages(limit, offset, classification, source)
 
@@ -67,7 +71,8 @@ def create_app(config: Config | None = None) -> FastAPI:
         limit: int = Query(50, ge=1, le=100),
         offset: int = Query(0, ge=0),
         message_id: str | None = None,
-        source: Literal["file", "stdin", "replay", "live_udp", "live_hdhomerun"] | None = None,
+        source: Literal["live", "file", "stdin", "replay", "live_udp", "live_hdhomerun"]
+        | None = None,
         classification: str | None = None,
     ) -> dict[str, Any]:
         return db.deliveries(
@@ -75,8 +80,13 @@ def create_app(config: Config | None = None) -> FastAPI:
         )
 
     @app.get("/api/v1/messages/{mid}")
-    def message(mid: str, db: DB) -> dict[str, Any]:
-        result = db.message(mid)
+    def message(
+        mid: str,
+        db: DB,
+        source: Literal["live", "file", "stdin", "replay", "live_udp", "live_hdhomerun"]
+        | None = None,
+    ) -> dict[str, Any]:
+        result = db.message(mid, source=source)
         if result is None:
             raise HTTPException(404, "message not found")
         return result
@@ -99,20 +109,15 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @app.get("/api/v1/alerts")
     def alerts(
-        db: DB, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)
+        db: DB,
+        limit: int = Query(50, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+        source: Literal[
+            "live", "all", "file", "stdin", "replay", "live_udp", "live_hdhomerun"
+        ] = "live",
+        status: str | None = None,
     ) -> dict[str, Any]:
-        ids = db.db.execute(
-            "SELECT id FROM messages WHERE actual_public=1 "
-            "ORDER BY created_at DESC,id LIMIT ? OFFSET ?",
-            (limit, offset),
-        )
-        return {
-            "label": "Unauthenticated CAP Actual/Public content; not operational warnings",
-            "lifecycle_policy": "references retained; update/cancel application deferred",
-            "limit": limit,
-            "offset": offset,
-            "items": [db.message(r[0]) for r in ids],
-        }
+        return db.alerts(limit, offset, source=None if source == "all" else source, status=status)
 
     @app.get("/api/v1/diagnostics")
     def diagnostics(

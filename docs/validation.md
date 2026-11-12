@@ -258,3 +258,69 @@ content, per-delivery rows, source filtering and delivery-history paging. Hostil
 CAP text remained inert. Final native server logs contained no errors/tracebacks.
 No new physical RF polling or Windows configuration change was executed in cloud.
 Users must restart both processes for schema 2 and ongoing RF sampling.
+
+## Alert inbox and live heartbeat follow-up — November 12, 2026 UTC
+
+The UI now opens on live alert content and keeps heartbeat/Link Test traffic in
+Diagnostics. CAP has readable multilingual text, instructions, parameters and
+separate areas with offline coordinate plots. Non-Link-Test CMAC has an explicitly
+experimental original-field review. Existing preserved trees are projected at read
+time; schema remains version 2 and original evidence is unchanged. CAP lifecycle
+labels describe declared timing/references, with same-source/sender/time and
+conflict guards. Replay cannot cancel live data or refresh the connection pulse.
+
+Manufacturer manual, OASIS CAP and FEMA IDG text were successfully inspected with
+the connected web research tool; initial direct proxy failures remain historical.
+See sources.md for versions/sections and the current CMAC-schema limitation.
+
+Executed `./scripts/setup.sh` and `./scripts/validate.sh`: **129 tests passed**,
+Ruff lint/format passed, strict mypy passed for 21 source files. The existing
+upstream Starlette HTTPX test-client deprecation warning remains. Reconstructed
+replay still yields 4 packets / 2 messages / 2 CRC passes, no losses/rejections.
+
+New checks exercise transport-to-API alert ingestion, default live-only inbox,
+status/source filters and pagination, exact bytes, multilingual/repeated fields,
+leading-zero geocodes, CAP-to-GeoJSON coordinate order, circle kilometres,
+invalid/unclosed/nonfinite geometry, missing/invalid dates, scheduled/expired/
+non-Actual/Cancel/Ack/Error presentation, out-of-order references, foreign/test/
+replay cancellation exclusion, conflicting identities and ambiguous latest
+references. Live heartbeat checks cover stale, stopped, fresh and restarted
+sessions, excluding untimed imports and replay with retained timestamps.
+
+The deterministic alert-demo.ts fixture replays **65 TS packets / 7 messages /
+7 CRC passes**, six CAP and one synthetic CMAC field-review example, with zero
+continuity gaps, incomplete messages or rejections. It is 12,220 bytes and contains
+fixed-date DEMO ONLY examples; its CRCs are computed test data, not independent
+protocol evidence. Default live inbox remains empty when only this demo is imported.
+
+Both browser commands passed against a disposable synthetic database on loopback
+port 8087, desktop 1400×1100 and mobile 390×844:
+
+```sh
+.venv/bin/python scripts/browser_alerts_smoke.py --url http://127.0.0.1:8087 \
+  --screenshot /tmp/warnbridge-alerts.png
+.venv/bin/python scripts/browser_smoke.py --url http://127.0.0.1:8087 \
+  --check-rf --check-cap --screenshot /tmp/warnbridge-alert-diagnostics.png
+```
+
+Verified empty live inbox vs replay cards, explicit Test/Replay labels, language
+switching, parameters/geocodes, polygon/circle plots, CMAC unknown fields, dynamic
+inspector lifecycle refresh without resetting language, and retained delivery
+paging/filtering. Heartbeat pulses on a new live observation ID, not a repeated
+health poll; stale age advances between polls, stopped/API failure removes green
+state, and reduced-motion preference suppresses animation. Hostile CAP text is
+inert in cards, readable detail and raw evidence. No external requests, inserted
+scripts, unexpected dialogs, layout overflow or JavaScript errors occurred. An
+initial browser assertion using unsafe-eval was replaced with DOM assertions;
+application CSP was not relaxed.
+
+`UV_CACHE_DIR=/tmp/warnbridge-uv uv build --offline --wheel --out-dir
+/tmp/warnbridge-alert-wheel` succeeded. The wheel contains the alert domain,
+offline assets and both SQL migrations. The initial build attempt used the
+read-only default uv cache and failed; explicitly choosing the existing writable
+cache resolved it. No runtime dependencies were added. Container rebuild/remote
+CI were not rerun for this change; previously recorded container checks are history.
+
+No cloud process accessed the home LAN, tuned hardware, captured a real alert or
+published a warning. Actual OTA alert/schema/trust acceptance and current CMAC
+normalization remain pending; synthetic presentation checks do not establish them.

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from warnbridge.domain.alerts import project_alert
 from warnbridge.formats.xml import Parsed, utc_time
 from warnbridge.inputs.hdhomerun import Tuner
 from warnbridge.transport.decoder import Event
@@ -178,18 +179,19 @@ class Store:
         classification: str | None = None,
         source: str | None = None,
     ) -> dict[str, Any]:
+        source_sql, source_params = self.source_filter(source)
         where = (
-            "WHERE (? IS NULL OR m.classification=?) AND (? IS NULL OR EXISTS "
+            "WHERE (? IS NULL OR m.classification=?) AND EXISTS "
             "(SELECT 1 FROM observations o JOIN sessions s ON o.session_id=s.id "
-            "WHERE o.message_id=m.id AND s.source=?))"
+            f"WHERE o.message_id=m.id AND {source_sql})"
         )
-        params = (classification, classification, source, source)
+        params = (classification, classification, *source_params)
         total = self.db.execute(f"SELECT count(*) FROM messages m {where}", params).fetchone()[0]
         rows = self.db.execute(
             f"SELECT m.id FROM messages m {where} ORDER BY "
             "(SELECT max(o.id) FROM observations o JOIN sessions s ON s.id=o.session_id "
-            "WHERE o.message_id=m.id AND (? IS NULL OR s.source=?)) DESC,m.id LIMIT ? OFFSET ?",
-            (*params, source, source, limit, offset),
+            f"WHERE o.message_id=m.id AND {source_sql}) DESC,m.id LIMIT ? OFFSET ?",
+            (*params, *source_params, limit, offset),
         ).fetchall()
         return {
             "total": total,
@@ -198,9 +200,16 @@ class Store:
             "items": [self.message(row["id"], detail=False, source=source) for row in rows],
         }
 
+    @staticmethod
+    def source_filter(source: str | None) -> tuple[str, tuple[str, ...]]:
+        if source == "live":
+            return "s.source IN (?,?)", ("live_hdhomerun", "live_udp")
+        return ("s.source=?", (source,)) if source else ("1=1", ())
+
     def message(
         self, mid: str, *, detail: bool = True, source: str | None = None
     ) -> dict[str, Any] | None:
+        source_sql, source_params = self.source_filter(source)
         row = self.db.execute("SELECT * FROM messages WHERE id=?", (mid,)).fetchone()
         if not row:
             return None
@@ -221,27 +230,29 @@ class Store:
             "o.received_at,o.monotonic_ns,o.chunk_index,o.transport_id,o.inferred_transport_at,"
             "o.header,o.offsets,o.stored_crc,o.calculated_crc FROM observations o "
             "JOIN sessions s ON o.session_id=s.id WHERE message_id=? "
-            "AND (? IS NULL OR s.source=?) ORDER BY o.id DESC LIMIT 100",
-            (mid, source, source),
+            f"AND {source_sql} ORDER BY o.id DESC LIMIT 100",
+            (mid, *source_params),
         ).fetchall()
         result["delivery_count"] = self.db.execute(
             "SELECT count(*) FROM observations o JOIN sessions s ON s.id=o.session_id "
-            "WHERE message_id=? AND (? IS NULL OR s.source=?)",
-            (mid, source, source),
+            f"WHERE message_id=? AND {source_sql}",
+            (mid, *source_params),
         ).fetchone()[0]
+        if source is not None and result["delivery_count"] == 0:
+            return None
         result["sources"] = [
             r[0]
             for r in self.db.execute(
                 "SELECT DISTINCT s.source FROM observations o JOIN sessions s ON s.id=o.session_id "
-                "WHERE o.message_id=? AND (? IS NULL OR s.source=?) ORDER BY s.source",
-                (mid, source, source),
+                f"WHERE o.message_id=? AND {source_sql} ORDER BY s.source",
+                (mid, *source_params),
             )
         ]
         times_row = self.db.execute(
             "SELECT min(received_at),max(received_at),min(processed_at),max(processed_at) "
             "FROM observations o JOIN sessions s ON s.id=o.session_id "
-            "WHERE message_id=? AND (? IS NULL OR s.source=?)",
-            (mid, source, source),
+            f"WHERE message_id=? AND {source_sql}",
+            (mid, *source_params),
         ).fetchone()
         result.update(
             zip(
@@ -268,6 +279,11 @@ class Store:
         if times and all(t is not None and t <= datetime.now(UTC) for t in times):
             result["lifecycle"] = "expired"
         result["operational_notifications"] = "disabled"
+        if result["protocol"] in ("CAP", "CMAC") and result["classification"] != "cmac_link_test":
+            result["alert"] = project_alert(result["protocol"], result["fields"])
+            self.cap_lifecycle(result, source)
+        else:
+            result["alert"] = None
         if detail:
             result["observations"] = []
             for o in reversed(observations):
@@ -287,7 +303,10 @@ class Store:
                     "resolved_message_ids": [
                         m[0]
                         for m in self.db.execute(
-                            "SELECT id FROM messages WHERE identity=?", (r["target_identity"],)
+                            "SELECT m.id FROM messages m WHERE identity=? AND EXISTS "
+                            "(SELECT 1 FROM observations o JOIN sessions s ON s.id=o.session_id "
+                            f"WHERE o.message_id=m.id AND {source_sql})",
+                            (r["target_identity"], *source_params),
                         )
                     ],
                 }
@@ -306,11 +325,12 @@ class Store:
         source: str | None = None,
         classification: str | None = None,
     ) -> dict[str, Any]:
+        source_sql, source_params = self.source_filter(source)
         where = (
             "WHERE o.state='message' AND (? IS NULL OR o.message_id=?) "
-            "AND (? IS NULL OR s.source=?) AND (? IS NULL OR m.classification=?)"
+            f"AND {source_sql} AND (? IS NULL OR m.classification=?)"
         )
-        params = (message_id, message_id, source, source, classification, classification)
+        params = (message_id, message_id, *source_params, classification, classification)
         joins = (
             "FROM observations o JOIN messages m ON m.id=o.message_id "
             "JOIN sessions s ON s.id=o.session_id "
@@ -342,6 +362,116 @@ class Store:
             )
             items.append(item)
         return {"total": total, "limit": limit, "offset": offset, "items": items}
+
+    def cap_lifecycle(self, message: dict[str, Any], source: str | None) -> None:
+        alert = message["alert"]
+        if message["protocol"] != "CAP" or alert["status"] != "Actual":
+            return
+        if message["conflict"]:
+            alert["lifecycle"] = "identity_conflict"
+            return
+        if alert["scope"] != "Public" or alert["message_type"] not in ("Alert", "Update"):
+            return
+        if not message["identity"] or not utc_time(alert["sent"] or ""):
+            alert["lifecycle"] = "unknown"
+            return
+        # Never let a replay/import cancel a live observation of the same content.
+        scope = source
+        if scope is None:
+            sources = set(message["sources"])
+            if sources and sources <= {"live_hdhomerun", "live_udp"}:
+                scope = "live"
+            elif len(sources) == 1:
+                scope = next(iter(sources))
+            else:
+                alert["lifecycle"] = "provenance_review"
+                alert["issues"].append("Choose a source group to project reference relationships")
+                return
+        source_sql, source_params = self.source_filter(scope)
+        rows = self.db.execute(
+            "SELECT m.id,m.fields,m.identity,r.kind FROM relationships r "
+            "JOIN messages m ON m.id=r.message_id WHERE r.target_identity=? "
+            "AND m.protocol='CAP' AND r.kind IN ('Update','Cancel') AND EXISTS "
+            "(SELECT 1 FROM observations o JOIN sessions s ON s.id=o.session_id "
+            f"WHERE o.message_id=m.id AND {source_sql}) LIMIT 1001",
+            (json.dumps(message["identity"]), *source_params),
+        ).fetchall()
+        if len(rows) > 1000:
+            alert["lifecycle"] = "reference_review"
+            alert["issues"].append("Reference relationship projection limit reached")
+            return
+        related = []
+        for row in rows:
+            fields = json.loads(row["fields"])
+            sent = utc_time(fields.get("sent", ""))
+            original_sent = utc_time(alert["sent"])
+            if (
+                fields.get("status") != "Actual"
+                or fields.get("scope") != "Public"
+                or fields.get("sender") != alert["sender"]
+                or sent is None
+                or original_sent is None
+                or sent <= original_sent
+            ):
+                continue
+            conflict = (
+                self.db.execute(
+                    "SELECT count(*) FROM messages WHERE identity=?", (row["identity"],)
+                ).fetchone()[0]
+                > 1
+            )
+            if conflict:
+                alert["issues"].append("Conflicting content in a referencing message")
+                alert["lifecycle"] = "reference_review"
+                continue
+            related.append((sent, row["id"], row["kind"], fields["sent"]))
+        alert["relationships"] = [
+            {"message_id": mid, "type": kind, "sent": stamp}
+            for _, mid, kind, stamp in sorted(related)
+        ]
+        if related and alert["lifecycle"] != "reference_review":
+            latest = max(related)
+            if len({kind for sent, _, kind, _ in related if sent == latest[0]}) > 1:
+                alert["lifecycle"] = "reference_review"
+                alert["issues"].append("Update and Cancel share the latest declared sent time")
+            else:
+                alert["lifecycle"] = "cancelled" if latest[2] == "Cancel" else "superseded"
+        alert["lifecycle_interpretation"] = "Declared CAP relationships; authentication not checked"
+
+    def alerts(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        *,
+        source: str | None = "live",
+        status: str | None = None,
+    ) -> dict[str, Any]:
+        source_sql, source_params = self.source_filter(source)
+        where = (
+            "WHERE m.protocol IN ('CAP','CMAC') AND m.classification!='cmac_link_test' "
+            "AND EXISTS (SELECT 1 FROM observations o JOIN sessions s ON s.id=o.session_id "
+            f"WHERE o.message_id=m.id AND {source_sql}) "
+            "AND (? IS NULL OR COALESCE(NULLIF(json_extract(m.fields,'$.status'),''),"
+            "CASE WHEN json_array_length(m.fields,'$.CMAC_status')=1 THEN "
+            "NULLIF(json_extract(m.fields,'$.CMAC_status[0]'),'') END,'Unknown')=?)"
+        )
+        params = (*source_params, status, status)
+        total = self.db.execute(f"SELECT count(*) FROM messages m {where}", params).fetchone()[0]
+        rows = self.db.execute(
+            f"SELECT m.id FROM messages m {where} ORDER BY "
+            "(SELECT max(o.id) FROM observations o JOIN sessions s ON s.id=o.session_id "
+            f"WHERE o.message_id=m.id AND {source_sql}) DESC LIMIT ? OFFSET ?",
+            (*params, *source_params, limit, offset),
+        ).fetchall()
+        items = [self.message(row["id"], detail=False, source=source) for row in rows]
+        return {
+            "items": items,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "label": "CAP and non-Link-Test CMAC; declared status, unauthenticated",
+            "lifecycle_policy": "Declared CAP timing and same-source references; unauthenticated",
+        }
 
     def record_receiver_status(
         self,
@@ -402,7 +532,9 @@ class Store:
         rows = self.db.execute("SELECT * FROM sessions ORDER BY started_at DESC LIMIT 100")
         return [{**dict(r), "summary": json.loads(r["summary"])} for r in rows]
 
-    def health(self, *, rf_stale_after: float = 20.0) -> dict[str, Any]:
+    def health(
+        self, *, rf_stale_after: float = 20.0, heartbeat_stale_after: float = 45.0
+    ) -> dict[str, Any]:
         receiver = self.receiver_health(rf_stale_after)
         last: dict[str, Any] = {}
         for label, classification in (("heartbeat", "heartbeat"), ("link_test", "cmac_link_test")):
@@ -413,7 +545,33 @@ class Store:
                 (classification,),
             ).fetchone()
             last[label] = dict(row) if row else None
+        live = self.db.execute(
+            "SELECT o.id,o.received_at,o.session_id,s.source,s.state AS session_state "
+            "FROM observations o JOIN sessions s ON s.id=o.session_id "
+            "JOIN messages m ON m.id=o.message_id WHERE m.classification='heartbeat' "
+            "AND s.source IN ('live_hdhomerun','live_udp') AND o.received_at IS NOT NULL "
+            "ORDER BY o.id DESC LIMIT 1"
+        ).fetchone()
+        stamp = utc_time(live["received_at"]) if live else None
+        age = max(0.0, (datetime.now(UTC) - stamp).total_seconds()) if stamp else None
+        latest_session = self.db.execute(
+            "SELECT id,state FROM sessions WHERE source IN ('live_hdhomerun','live_udp') "
+            "ORDER BY started_at DESC,rowid DESC LIMIT 1"
+        ).fetchone()
+        state = "waiting"
+        if latest_session and latest_session["state"] != "running":
+            state = "stopped"
+        elif live and latest_session and live["session_id"] == latest_session["id"]:
+            state = "stale" if age is None or age > heartbeat_stale_after else "recent"
+        connection = {
+            "state": state,
+            "last_heartbeat": dict(live) if live else None,
+            "age_seconds": age,
+            "stale_after_seconds": heartbeat_stale_after,
+            "scope": "live_only",
+        }
         return {
+            "connection": connection,
             "application": "ok",
             "rf_tuner": receiver["state"] if receiver else "not_checked",
             "receiver": receiver,

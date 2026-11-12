@@ -77,12 +77,32 @@ reference triples retained. Different bytes under an identical identity are
 flagged as conflicts. Reference resolution happens at read time, including
 out-of-order arrivals and ambiguous multiple matches; no overwrite occurs.
 
+CAP presentation follows the retrieved OASIS CAP 1.2 standard (see sources.md).
 Expiration is reported only when every info block supplies a parseable,
-timezone-aware expiration and all are past. Update/cancel references are exposed
-but automatic lifecycle application is deferred pending authoritative verification.
-No missing web snapshot can cancel OTA data. Geography is retained in original CAP
-lat,lon order, circles in their source representation, geocodes as strings (including
-leading zeros), and areas remain separate. GeoJSON conversion/filtering is deferred.
+timezone-aware expiration and all are past. An in-effect label requires known
+expiration/effective times; missing/invalid times remain unknown. Ack/Error are
+not displayed as in-effect alerts. All lifecycle labels describe declared fields,
+not authentication or successful schema validation.
+
+At read time, Actual/Public Alert/Update content can be shown as superseded or
+cancelled by a later Actual/Public Update/Cancel with an exact reference triple,
+the same sender, and a later parseable sent time. Resolution is independent of
+arrival order. Live sources form one source group; imports/replay cannot cancel
+live data. Mixed-source, conflicting identities, simultaneous Update/Cancel times
+and reference-query overflow require review. No evidence is overwritten, deleted
+or operationally acted upon. Original references, unresolved targets, cancellations
+without info blocks, and all message statuses remain inspectable.
+
+Geography retains original CAP lat,lon strings, circle radius in km and geocodes
+as strings (including leading zeros); areas and languages remain separate.
+Derived GeoJSON explicitly converts coordinates to lon,lat. Valid closed polygons
+and approximate 64-point spherical circle boundaries can be plotted offline.
+Unclosed/nonfinite/out-of-range shapes are reported, not repaired. Application plot
+bounds are 4–4096 vertices per polygon and 0 < circle radius <= 10,000 km; these are
+not CAP schema limits. No geocode boundary, basemap, targeting or geographic
+relevance is inferred. Schema/signature/geography validation states are unchanged.
+CMAC gets a conservative original-leaf-field view, without assumed CAP mapping,
+CMAC geography or lifecycle. A current CMAC schema and real alert sample are pending.
 
 ## Identity and clocks
 

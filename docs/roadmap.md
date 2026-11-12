@@ -14,6 +14,10 @@
 - SQLite migrations, ingestion exclusion, read-only API, offline desktop/mobile UI.
 - Background RF polling/freshness states, individual delivery and grouped content
   views, source-scoped counts and paginated reception history.
+- Alert-first live inbox, live heartbeat pulse/freshness, multilingual CAP text,
+  instructions/parameters, separate areas and offline coordinate plots. Conservative
+  same-source declared CAP timing/update/cancel projection without evidence mutation.
+- Non-Link-Test CMAC original-field review and replay-only synthetic alert scenarios.
 - Locked Python dependencies, idempotent setup, offline validation, Docker and CI.
 - Separate saved-web-response import with no network polling or guessed comparison.
 
@@ -29,11 +33,12 @@ transport. See evidence.md for exact excerpt counts and provenance. The original
 - **Original 56-packet capture, broader firmware coverage, physical busy-tuner races,
   shutdown cleanup and unattended reliability.**
 - Schema validation and cryptographic signature/trust verification: not configured
-  or implemented. No authenticity claims. Authoritative document retrieval blocked.
+  or implemented. No authenticity claims. Current CMAC XSD and trust policy pending.
 - Normative header/control semantics, other OTA content types and production alerts.
-- Automatic CAP update/cancel lifecycle projection; CMAC normalization/lifecycle.
-  References/identities/unknown fields are already preserved for later validation.
-- Geometry conversion, targeting, geographic relevance and maps.
+- CMAC schema-backed normalization, alert text/area semantics and lifecycle.
+  References/identities/unknown fields are preserved; no speculative conversion.
+- Geographic targeting/relevance, geocode boundary lookup and basemaps. The existing
+  offline coordinate plot is a representation of supplied geometry only.
 - RTP, resynchronization, multicast, other tuners and ATSC 3.0.
 - Live web comparison: operator policy, completeness, rate limits, pagination,
   redirect rules and defensible mappings must be established before adding polling.
@@ -44,8 +49,8 @@ transport. See evidence.md for exact excerpt counts and provenance. The original
 - Legacy detail embeds at most 100 observations; the new paginated delivery API/UI
   exposes full history. Archive retention/large-scale query tuning remains future work.
 
-**Next bounded task:** privately supply the original PID-only file, record SHA-256,
-run the baseline comparison without editing expected counts, inspect any divergence,
-and complete a bounded live run with final summary and read-only confirmation that
-its owned tuner was released. Keep authoritative-source retrieval/schema work as a
-separate follow-on.
+**Next bounded task:** verify current CMAC alert schema/enums and privately validate
+a real alert sample through text/area/lifecycle presentation. Public CAP is supported
+as its own protocol; it is not assumed to be the format of every PBS WARN payload.
+Original-capture baseline and owned tuner shutdown acceptance remain independent
+hardware checks. No alert requires an Internet service to receive or inspect.

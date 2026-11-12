@@ -56,8 +56,10 @@ example, a signed alert, or a recorded OTA message.
 - Transport ID as Unix seconds is empirical. `6af3c24c` maps to
   `2026-11-11T01:18:04Z`; `00000411` is not a useful heartbeat timestamp.
 - Official SiliconDust source was re-fetched and inspected for lock/control rules.
-- Authoritative CAP/CMAC transport/schema/trust documents were blocked by this
-  environment's network policy; see sources.md. No schema/signature success claim.
+- Initial direct document fetches were blocked. On November 12, the web research
+  tool retrieved the manufacturer manual, OASIS CAP 1.2 and FEMA IDG 4.02; see
+  sources.md. Current CMAC schema/transport/trust verification is still incomplete.
+  No schema/signature success claim.
 - A valid CRC is not authentication; parseable XML is not schema validation;
   a heartbeat is not evidence of successful public-warning delivery.
 
@@ -117,3 +119,18 @@ Physical busy-tuner races, shutdown cleanup and unattended reliability remain
 separate acceptance checks. Original 56-packet recording validation remains pending.
 Neither supplied raw log is committed or published; only this aggregate evidence
 summary is versioned.
+
+## Alert-focused follow-up (November 12, 2026 UTC)
+
+The user reports steady heartbeat/Link Test traffic and requests an alert-focused
+view. No actual alert XML/TS has been supplied or received in the cloud. Synthetic
+CAP and CMAC examples exercise transport ingestion and presentation, not OTA alert
+coverage, current CMAC schema validity or authenticity. The new alert-demo.ts is
+separate from both the independent vectors and the missing original recording.
+
+The D2WARN manual revision 11, printed page 104, describes PBS NOC heartbeat checks
+at 30-second intervals and FEMA Link Tests usually every 60 seconds, sometimes 120.
+This distinguishes their broad purposes; it does not explain the user's repeated
+2020-dated Link Test template. Different message numbers/sent times/content produce
+different exact-content records; counts alone cannot establish loss, origin-side
+retransmission policy or distinct test functions. Those remain unverified.

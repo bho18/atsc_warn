@@ -70,6 +70,12 @@ with sync_playwright() as p:
 
         page.route("**/api/v1/health", health_route)
     page.goto(args.url)
+    expect(page.get_by_role("tab", name="Alerts", exact=True)).to_have_attribute(
+        "aria-selected", "true"
+    )
+    page.get_by_role("tab", name="Diagnostics", exact=True).click()
+    page.locator("#source").select_option("")
+    page.locator("#classification").select_option("")
     expect(page.get_by_role("tab", name="Deliveries", exact=True)).to_have_attribute(
         "aria-selected", "true"
     )
@@ -102,12 +108,17 @@ with sync_playwright() as p:
     assert not page.locator("#raw script").count()
     expect(page.locator("#historyPage")).to_contain_text("deliveries")
     if args.check_cap:
+        page.locator("#classification").select_option("cap")
         page.get_by_role("button", name="cap", exact=True).first.click()
         expect(page.locator("#fields")).to_contain_text("<script>")
         assert not page.locator("#detail script").count()
-        assert "&lt;script&gt;" in page.locator("#raw").inner_text()
+        expect(page.locator("#alertDetail")).to_contain_text("<script>")
+        page.locator("#evidence").evaluate("e => e.open = true")
+        expect(page.locator("#raw")).to_contain_text("&lt;script&gt;")
     if args.check_rf:
+        page.locator("#classification").select_option("heartbeat")
         page.get_by_role("button", name="heartbeat", exact=True).first.click()
+        page.locator("#evidence").evaluate("e => e.open = true")
         expect(page.locator("#historyPage")).to_contain_text("1–10 of 36 deliveries")
         page.get_by_role("button", name="Next deliveries", exact=True).click()
         expect(page.locator("#historyPage")).to_contain_text("11–20 of 36 deliveries")

@@ -14,6 +14,8 @@ udp_port = 5000
 full_multiplex = false
 record_raw = false
 no_data_warning = 45.0
+# UI heartbeat freshness only; not proof of end-to-end alert delivery.
+heartbeat_stale_after = 45.0
 capture_dir = "data/captures"
 capture_segment_bytes = 8388608
 capture_segments = 8

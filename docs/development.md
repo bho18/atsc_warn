@@ -40,8 +40,8 @@ Cloud specifics: default user cache was read-only, so setup uses
 `UV_CACHE_DIR=/tmp/warnbridge-uv` unless overridden. Package network uses inherited
 proxy/CA settings. Docker builds may need
 `--secret id=proxy_ca,src=/etc/ssl/certs/ca-certificates.crt` for the managed proxy;
-no session certificate is copied into the image. Documentation sites were blocked;
-implementation never bypassed network restrictions.
+no session certificate is copied into the image. Initial direct documentation fetches were blocked; later web-tool inspections
+are recorded in sources.md. No network restrictions were bypassed.
 
 `doctor` without `--receiver` does not create a DB or contact a device. Explicit
 `--receiver` only reads status/target/lock, requiring configured host+tuner. Listen/capture
@@ -61,3 +61,14 @@ For the extended browser smoke, --check-rf mocks RF health responses and expects
 synthetic fixture archive with 35 live heartbeat deliveries plus one replay heartbeat;
 --check-cap additionally verifies hostile XML text stays inert. The ordinary browser
 smoke works with the standard reconstructed replay archive.
+
+Alert presentation uses preserved trees, so existing records need no reimport.
+Build the deterministic synthetic alert TS fixture with
+`.venv/bin/python -m scripts.build_alert_demo`. The alert browser smoke expects a
+disposable database containing alert-demo.ts, cap.xml (wrapped as synthetic TS),
+plus the reconstructed Link Test/heartbeat data; all alert examples use replay.
+`browser_alerts_smoke.py --url http://127.0.0.1:8087` exercises the inbox, languages,
+CMAC field review, coordinate plots, source/status filters and live heartbeat
+animation/freshness using mocked health replies. It also checks reduced motion,
+mobile width, no external requests and no unexpected JS dialogs/errors. Never seed
+synthetic alert content into a live source or a production archive for this test.

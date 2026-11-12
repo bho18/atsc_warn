@@ -24,8 +24,9 @@ flowchart LR
 omitted when using the decoder as a library. `formats/` owns dispatch and preserved
 trees. `inputs/` owns acquisition and replay. `pipeline.py` handles classification,
 summary counters and persistence. `storage/001_initial.sql` is the explicit initial
-migration, followed by 002_receiver_status.sql for persisted RF samples; newer unknown database versions are refused by writers. `api/` has no
-receiver startup hook or mutation routes. `web/` contains all necessary UI assets.
+migration, followed by 002_receiver_status.sql for persisted RF samples; newer unknown database versions are refused by writers. `domain/` projects readable CAP fields, declared lifecycle and derived geometry
+from preserved trees without writing evidence. `api/` has no receiver startup hook
+or mutation routes. `web/` contains all necessary UI assets.
 
 Each accepted observation stores raw TS bytes, stream offsets, assembled bytes,
 header/body, CRCs, transport ID, reception metadata, session and processing time.
@@ -65,3 +66,9 @@ RF control reads run in a dedicated worker with a bounded latest-sample queue.
 The ingestion thread persists snapshots; the API reads them and computes freshness
 without device access. See ui-monitoring.md for threading, freshness and source-aware
 archive/delivery presentation.
+
+The alert inbox defaults to the live source group and excludes heartbeat/Link Tests.
+Non-Link-Test CMAC is included even when its status/enum is unknown, so unrecognized
+alert content is available for review. The heartbeat indicator uses a separate
+live-only timed observation query; replay, file-import clocks and XML sent times
+cannot refresh it. All message resources stay local and inert, including web links.

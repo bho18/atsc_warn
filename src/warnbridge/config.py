@@ -25,6 +25,7 @@ class Config:
     no_data_warning: float = 45.0
     rf_poll_interval: float = 5.0
     rf_stale_after: float = 20.0
+    heartbeat_stale_after: float = 45.0
     capture_dir: str = "data/captures"
     capture_segment_bytes: int = 8 * 1024 * 1024
     capture_segments: int = 8
@@ -47,6 +48,8 @@ class Config:
             IPv4Address(self.return_ip)
         if self.rf_poll_interval < 1 or self.rf_stale_after <= self.rf_poll_interval:
             raise ValueError("RF poll interval must be >=1s; stale threshold must exceed interval")
+        if self.heartbeat_stale_after <= 0:
+            raise ValueError("heartbeat_stale_after must be positive")
         if self.no_data_warning <= 0:
             raise ValueError("no_data_warning must be positive")
         if min(self.capture_segments, self.max_rejected) < 1:

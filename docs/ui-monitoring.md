@@ -1,4 +1,52 @@
-# RF monitoring and message views
+# Alert inbox and receiver monitoring
+
+## Alerts and the live heartbeat indicator
+
+The default **Alerts** inbox shows live CAP and non-Link-Test CMAC content. It
+excludes heartbeat/Link Test traffic without dropping evidence. Choose **replay**,
+file/stdin or All sources explicitly to inspect imported examples. Each card shows
+protocol, declared status, source, receipt/sent/expiry, delivery count and a readable
+headline when available. Test/System/Exercise/Draft/unknown content remains clearly
+labeled and accessible. Actual means a field value, not an authenticated warning.
+
+The inspector shows CAP languages/information blocks, severity/urgency/certainty,
+instructions, description, parameters (including wireless alert text), separate
+areas/geocodes and original coordinates. An offline SVG coordinate plot displays
+supplied polygons and approximate circle boundaries, without external tiles, URL
+fetches or inferred geocode boundaries. Invalid geometry stays in the field/raw
+views and is reported as unplottable. Unknown extensions and original XML/bytes
+remain under the evidence disclosure, along with all deliveries.
+
+CAP Update/Cancel references and expiration are projected conservatively within
+the selected source group, without changing evidence. Live imports cannot be
+cancelled by replay. Conflicts/mixed sources/ambiguous latest references need review.
+Missing targets and cancellation messages without info remain visible. See
+protocol.md for exact rules. CMAC receives an experimental original-field review
+view; no current CMAC schema, enum mapping, geography or lifecycle is assumed.
+
+The connection indicator pulses once on each newly observed, fresh **live**
+heartbeat delivery. It does not pulse on every UI refresh or on imported/replay
+heartbeats, even when a replay retains arrival timestamps. It shows overdue after
+`heartbeat_stale_after` (default 45 seconds), stopped for a stopped receiver, waiting
+before a timed live observation, and unknown when API refresh fails. Age advances
+locally between polls, so an old green state cannot persist through a hung request.
+Reduced-motion preferences disable the animation. RF lock, heartbeat freshness,
+Link Tests and authentication remain separate indicators.
+
+The manufacturer's revision-11 D2WARN manual, printed page 104, describes PBS
+heartbeats every 30 seconds and FEMA Link Tests usually 60 seconds, sometimes 120.
+The 45-second UI threshold is a configurable application choice, not that manual's
+40-second receiver alarm setting or a certification of warning delivery. The manual
+does not establish why the user's fixed 2020 Link Test keeps recurring. All those
+Link Tests share the broad connectivity-check purpose; distinct XML/repeat counts
+alone do not identify different test functions. See sources.md for the citation.
+
+Read-only API additions: `/api/v1/alerts` defaults to `source=live`; use `source=all`
+or a specific source, optional `status`, `limit` and `offset`. It includes non-Link-Test
+CMAC even when status is unknown. Message detail accepts a source filter, with an
+`alert` projection derived from existing preserved trees. `/api/v1/health.connection`
+is live-only heartbeat freshness. Existing general messages/deliveries APIs retain
+their all-source default and add the `source=live` alias. No new migration is needed.
 
 ## RF / tuner card
 
@@ -25,7 +73,7 @@ run the updated `listen` process against the same database.
 
 ## Deliveries and unique content
 
-The default **Deliveries** view shows one accepted reception per row, including each
+Under **Diagnostics**, **Deliveries** shows one accepted reception per row, including each
 heartbeat and each repeated Link Test. It shows reception time separately from XML
 sent time. Untimed file/replay imports keep reception unknown and show processing
 time instead; they never acquire a fabricated arrival timestamp.
@@ -39,7 +87,8 @@ formatting or other fields and form distinct content records. Different repeat
 counts alone do not establish loss or an error. Old System/Link Test XML sent times
 remain visible; receiving an old test again does not create a new public warning.
 
-Both views support type and source filtering. Content counts, source labels and
+Diagnostics defaults to Link Tests and supports heartbeat history through the type
+filter. Both diagnostic views support type and source filtering. Content counts, source labels and
 first/last known receipt times respect the selected source, so a live-only count no
 longer includes replay imports. The repeated-content marker reflects whether the
 archive had that content before the delivery, even if the earlier observation was
@@ -47,7 +96,8 @@ from another source. All-source grouping is retained deliberately; data/identiti
 are not rewritten or duplicated by this UI change. Unique content sorts by most
 recent delivery rather than only its first insertion.
 
-Selecting a message opens its original bytes/fields and a paginated delivery-history
+Selecting a message opens a readable alert (when applicable), original bytes/fields
+and a paginated delivery-history
 table, including source, timestamps, transport ID and CRC. Each history row can be
 selected to inspect/download that observation's body. The legacy message-detail
 response still caps its embedded observation list at 100; the new paginated
@@ -57,7 +107,8 @@ routes restrict an observation to its requested content ID and expose no file pa
 
 ## Upgrading an existing installation
 
-Stop **both** the listener and web server before updating. Database migration 002
+Stop **both** the listener and web server before updating. The alert inbox retains
+schema 2. For installations still on schema 1, database migration 002
 adds a per-session latest RF snapshot table and an observation index, taking schema
 version 1 to 2. Existing messages, delivery counts, raw bytes and relationships are
 preserved; no reimport or database deletion is needed. Old binaries must be stopped
@@ -78,5 +129,6 @@ and database as before. For the historical station/device example:
 ```
 
 Refresh the browser. RF status should update within the polling/UI cycle after a
-successful device query. The new Deliveries view presents existing observations
-individually immediately; starting the new listener enables RF sampling going forward.
+successful device query. The alert inbox reads existing preserved trees immediately;
+no reimport/deletion is needed. Diagnostics retains individual and grouped check
+traffic. Live heartbeat animation needs timed reception, not imported data.

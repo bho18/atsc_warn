@@ -28,9 +28,9 @@ successfully. LICENSE says GNU LGPL v2.1; no implementation copied or bundled.
 blocked by proxy CONNECT 403. Interface findings above come from inspected official
 source, not an assumed successful documentation fetch.
 
-## Normative and manufacturer documents not retrieved
+## Initial direct-fetch failures (historical)
 
-Each URL was re-requested; each failed at proxy CONNECT with 403. This is a cloud
+During initial delivery each following URL failed at proxy CONNECT with 403. This is a cloud
 network-policy restriction, not evidence that the origin denies the user. Document
 version names below come from the supplied references; content and currentness
 were not independently verified. No claim that a draft is the latest final.
@@ -47,10 +47,49 @@ were not independently verified. No claim that a draft is the latest final.
 | [Older preview](https://store.accuristech.com/products/preview/2002334) | older ATIS preview, version unverified | blocked; no normative definitions inferred |
 | [PBS WARN](https://www.pbs.org/about/about-pbs/contact-information/warn/) | public program information | blocked; not treated as a schema/transport specification |
 
-Unresolved: authoritative CMAC XSD/enums, PBS C–1 unknown fields, CAP-to-CMAC mapping,
-update/cancel references and ordering, applicable signature/trust policy, actual
-native CAP/other OTA content coverage, and newer final guidance. User-observed
-framing remains the implementation baseline while these documents are unavailable.
+These are initial direct-fetch results, superseded for three documents by the web
+tool retrieval below. Still unresolved: authoritative current CMAC XSD/enums, PBS
+C–1 unknown fields, current CAP-to-CMAC mapping, applicable signature/trust policy,
+actual OTA alert coverage and newer final guidance. User-observed framing remains
+the implementation baseline; CAP presentation now also uses the retrieved standard.
+
+## Successful web-tool inspection (November 12, 2026 UTC)
+
+The connected web research tool could retrieve documents unavailable to the initial
+shell proxy. Its text extraction was inspected read-only; no full standards text,
+third-party implementation, XSD or trust store is copied/bundled. This records an
+inspection, not a currentness or complete protocol-conformance claim. The historical
+source-access.json continues to describe the initial direct-fetch attempts only.
+
+- [D2WARN manual, August 2023 revision 11](https://d2dtechnologies.com/wp-content/uploads/2023/08/PBS-WARN-Manual-Aug-2023-rev-11.pdf),
+  105 PDF pages. Printed page 104 (PDF page 104): PBS NOC sends a short heartbeat
+  every 30 seconds; its receiver alarms if absent for 40 seconds. FEMA Link Tests
+  are usually every 60 seconds, sometimes 120; intervals are not guaranteed. This
+  is manufacturer guidance, not an assertion about the observed byte profile or
+  current FEMA schedule. Its rough multi-kilobyte example does not replace the
+  user's independently specified 446-byte XML vector. No explanation of a fixed
+  2020-dated recurring test was found; caching/templates/redundancy are unverified.
+- [OASIS Common Alerting Protocol Version 1.2, OASIS Standard, 1 July 2010](https://docs.oasis-open.org/emergency/cap/v1.2/CAP-v1.2-os.html),
+  sections 3.2.1–3.2.4: alert/info/resource/area fields, status and msgType,
+  references, multilingual info, parameters, polygon coordinates and circles.
+  Update supersedes referenced earlier messages; Cancel cancels referenced earlier
+  messages. Coordinates use latitude,longitude and circle radius uses kilometres.
+  The application adds conservative source/sender/time/conflict guards and labels
+  the result as declared/unauthenticated. No schema or signature verification is
+  inferred from presentation. XSD retrieval/bundling and IPAWS-profile conformance
+  remain separate tasks; the standard's existence is not an XSD validation result.
+- [FEMA IPAWS-OPEN Interface Design Guidance 4.02 Final](https://content.govdelivery.com/attachments/USDHSFEMA/2024/01/31/file_attachments/2767795/IPAWS-OPEN-v4-02-InterfaceDesignGuide_Final.pdf),
+  cover February 2024, 142 PDF pages. Public-feed guidance distinguishes CAP feed
+  messages from CMAC C-interface messages. Appendix CAP-to-CMAS transformation
+  mapping discusses identifier/sender/sent/status/msgType and references, including
+  cancellations without info. This does not establish the exact current CMAC 2.0
+  root/leaf fields or enum mapping observed OTA, nor a usable public-feed contract,
+  credentials or hostname. No network polling was added.
+
+The older ATIS preview remained inaccessible (HTTP 403), and no paywall was
+bypassed. Search snippets/older FCC CMAC examples were not treated as normative
+CMAC 2.0 definitions. Non-Link-Test CMAC alerts therefore remain original-field
+review, pending a current schema and actual alert sample.
 
 ## Historical research only
 

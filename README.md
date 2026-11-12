@@ -2,7 +2,7 @@
 
 An experimental, self-hosted PBS WARN ATSC 1.0 receiver and evidence archive.
 Decodes the observed PID 0x0911 framing, preserves original bytes, and serves a
-local read-only API and offline message-inspection UI. Reception never requires
+local read-only API and offline alert inbox. Reception never requires
 an Internet service. **CRC integrity is not authenticity. This is not a certified
 alerting product and sends no public warnings or operational notifications.**
 
@@ -43,9 +43,22 @@ With Python 3.12+ and uv 0.13.5 installed:
 .venv/bin/warnbridge serve --config config/demo.toml
 ```
 
-Open http://127.0.0.1:8080. The reconstructed four-packet fixture produces one CMAC
+Open http://127.0.0.1:8080. Choose **Diagnostics → replay** to inspect the checks.
+The reconstructed four-packet fixture produces one CMAC
 System/Link Test and one heartbeat, both with valid independent CRC values. It is
 **not** the original 56-packet OTA capture. No tuner or web endpoint is contacted.
+
+To explore alert text, languages, instructions, areas, updates and cancellations:
+
+```sh
+.venv/bin/warnbridge replay tests/fixtures/alert-demo.ts --config config/demo.toml
+```
+
+Choose **Alerts → replay** in the UI. These seven messages are explicitly synthetic,
+with fixed example dates and DEMO ONLY text; they are not actual warnings or
+schema-validated samples. The inbox defaults to live reception and excludes replay.
+The heartbeat indicator only pulses for newly observed, recently received live
+heartbeats. Link Tests and heartbeat history remain available in Diagnostics.
 
 ```sh
 .venv/bin/warnbridge decode /path/to/capture.ts --out output/import
@@ -64,13 +77,18 @@ capture; the image does not include the HDHomeRun CLI.
 
 - `src/warnbridge/transport`: standard-library decoder and CRC; strict loss handling.
 - `formats`: hardened XML parsing, separate validation/classification states.
+- `domain`: readable CAP fields, declared lifecycle and offline coordinate geometry.
 - `inputs`: file, raw UDP, journal replay, owned HDHomeRun control, saved web JSON.
 - `storage`: migration and immutable deliveries; SHA-256 content deduplication.
 - `api`, `web`: read-only API, offline assets, provenance and raw-byte inspection.
 - `tests`: independent golden vectors, synthetic faults/CAP, storage/API/UDP/tuner tests.
 
-Schema validation/signature verification, automatic update/cancel application,
-geographic filtering and live web comparison are not implemented. User-supplied
+CAP presentation includes multilingual information blocks, instructions, wireless
+alert parameters, separate areas, coordinate plots, expiration and conservative
+same-source Update/Cancel reference projection. CMAC alerts have an experimental
+original-field review view; current CMAC schema/mappings remain unverified.
+Schema validation, signature verification, geographic targeting and live web
+comparison are not implemented. User-supplied
 logs confirm live heartbeat/CMAC Link Test reception from an HDHR5-2US in mirrored
 WSL after the native keepalive fix. Broader hardware lifecycle behavior remains
 unverified, and the cloud has not accessed the receiver. Actual captures are ignored by Git.
@@ -83,8 +101,8 @@ Read [deployment](docs/deployment.md), [development](docs/development.md),
 **Real-capture validation pending; user previously reported successful validation
 with the experimental decoder.**
 
-The UI now defaults to **Deliveries** (one row per reception), with a separate
-**Unique content** view and paginated per-message history. RF status is polled by
-the live listener and shows stale/error/stopped states. Existing installations must
-restart both listener and server for the non-destructive schema-2 update. See
-[UI monitoring and upgrade instructions](docs/ui-monitoring.md).
+The UI defaults to **Alerts**, with check traffic in **Diagnostics**. RF status is
+polled by the live listener and shows stale/error/stopped states. Heartbeat freshness
+is separate from RF lock and alert authenticity. Existing evidence is retained;
+the alert view needs no database migration beyond schema 2. Restart listener and
+server after upgrading. See [UI monitoring](docs/ui-monitoring.md).
