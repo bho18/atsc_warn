@@ -15,9 +15,17 @@
 - Locked Python dependencies, idempotent setup, offline validation, Docker and CI.
 - Separate saved-web-response import with no network polling or guessed comparison.
 
+## User-verified hardware milestone
+
+User-supplied logs after b61a689 confirm direct-IP HDHR5-2US reception of live
+heartbeats and CMAC Link Tests in mirrored WSL, with incoming UDP and valid decoded
+transport. See evidence.md for exact excerpt counts and provenance. The original
+56-packet TS file and broader hardware lifecycle/reliability checks remain separate.
+
 ## Explicitly deferred/unverified
 
-- **Original 56-packet capture and all physical receiver/VLAN/firmware behavior.**
+- **Original 56-packet capture, broader firmware coverage, physical busy-tuner races,
+  shutdown cleanup and unattended reliability.**
 - Schema validation and cryptographic signature/trust verification: not configured
   or implemented. No authenticity claims. Authoritative document retrieval blocked.
 - Normative header/control semantics, other OTA content types and production alerts.
@@ -35,5 +43,6 @@
 
 **Next bounded task:** privately supply the original PID-only file, record SHA-256,
 run the baseline comparison without editing expected counts, inspect any divergence,
-and then perform one 60-second hardware test on an independently confirmed idle
-tuner. Keep authoritative-source retrieval/schema work as a separate follow-on.
+and complete a bounded live run with final summary and read-only confirmation that
+its owned tuner was released. Keep authoritative-source retrieval/schema work as a
+separate follow-on.

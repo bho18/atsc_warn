@@ -70,8 +70,10 @@ capture; the image does not include the HDHomeRun CLI.
 - `tests`: independent golden vectors, synthetic faults/CAP, storage/API/UDP/tuner tests.
 
 Schema validation/signature verification, automatic update/cancel application,
-geographic filtering and live web comparison are not implemented. All hardware
-behavior remains unverified in cloud. Actual captures are ignored by Git.
+geographic filtering and live web comparison are not implemented. User-supplied
+logs confirm live heartbeat/CMAC Link Test reception from an HDHR5-2US in mirrored
+WSL after the native keepalive fix. Broader hardware lifecycle behavior remains
+unverified, and the cloud has not accessed the receiver. Actual captures are ignored by Git.
 
 Read [deployment](docs/deployment.md), [development](docs/development.md),
 [protocol](docs/protocol.md), [evidence](docs/evidence.md), [sources](docs/sources.md),

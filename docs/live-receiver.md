@@ -151,3 +151,13 @@ locate the return traffic at Windows' network interface or the VLAN gateway.
 Windows/Hyper-V filtering, VLAN policy and device behavior remain possible causes;
 keepalives cannot bypass a deliberate network deny rule. The previously authorized
 source-scoped WSL firewall rule is independent of this application fix.
+
+## Observed local result
+
+User-supplied logs from b61a689 now confirm bidirectional UDP and accepted heartbeat/
+CMAC Link Test deliveries on mirrored WSL. Raw recording was disabled. See evidence.md
+for the aggregate excerpt analysis and its limits. This verification used the
+keepalive patch with the previously authorized firewall exception; it is not a
+controlled comparison of those two changes. No further firewall change is indicated
+by this successful run. To inspect these deliveries in the UI, keep the listener
+running and start `warnbridge serve` from the same checkout/config/database.

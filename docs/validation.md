@@ -192,3 +192,23 @@ and verifies target/channel/lock cleanup plus a failed persistent receiver sessi
 These are source-conformance and mock/loopback tests, not proof that this resolves
 the user's actual WSL/VLAN routing. A hardware retry should inspect outbound UDP
 5000→5004 and inbound TS; sending a UDP datagram cannot prove the receiver got it.
+
+## User-supplied live acceptance logs
+
+The user provided output from `b61a689` showing successful direct-IP, RF 7, HDHR5-2US
+reception in mirrored WSL. Analysis of complete records found 20 transport-valid
+message deliveries (7 heartbeats, 13 System/Link Tests), 6 distinct content IDs and
+15 archive-duplicate flags. Base64 body, XML view and SHA-256 identity consistency
+checks all passed for those records. This is a check of decoded output, not an
+independent CRC calculation on raw TS evidence.
+
+The separately supplied packet-header trace shows 76 outgoing four-byte keepalives
+and 17 incoming 1316-byte UDP datagrams. Run/excerpt time windows differ. One terminal
+JSON line is truncated and no final decoder summary is provided; full-run packet,
+continuity, CRC-failure and shutdown counters are unknown. No supplied raw logs or
+message payloads were added to Git. See evidence.md for provenance and limitations.
+
+This establishes user-verified live reception with the keepalive patch and the
+previously authorized firewall exception. It does not establish that either change
+alone was sufficient, certify public-warning delivery, validate signatures/schemas,
+or replace the pending original 56-packet-file acceptance test.

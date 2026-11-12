@@ -78,3 +78,42 @@ point in those attempts, not the exclusive network cause. A source inspection th
 established a software omission: our adapter did not send native UDP video keepalives.
 The adapter now does; whether that resolves the physical WSL/VLAN case remains
 unverified. No original transport recording from these runs has been provided.
+
+## User-verified live WSL reception after the keepalive correction
+
+The user supplied terminal output from the update to `b61a689` and a separate
+packet-header trace. These are real-device observations provided by the user,
+not a cloud hardware run or a raw TS recording. The terminal explicitly reported
+`source=live_hdhomerun` and `raw_recording=false`.
+
+The complete JSON records in the pasted excerpt contain 20 accepted deliveries:
+7 heartbeats and 13 CMAC System/Link Tests, with 6 distinct content IDs (5 CMAC XML
+bodies and one heartbeat body). Fifteen deliveries are flagged duplicates against
+the persistent archive; these flags include content seen before this excerpt.
+Every complete message record reports transport=valid; the 13 XML messages report
+well_formed. The decoded base64 bodies independently match the shown XML views and
+SHA-256 content IDs. This does not independently recalculate transport CRCs: raw
+assembled headers/stored CRCs are absent from the pasted JSON.
+
+Complete deliveries span 2026-11-12T01:18:29.355597Z to 01:21:32.178749Z
+(November 11, 2026, 7:18–7:21 PM America/Chicago). The paste ends partway through
+another JSON line and contains no final summary, so these are excerpt counts,
+not final run totals or a complete continuity/loss assessment. No complete rejected
+record is present. Some Link Tests retain a 2020 XML sent time; their current
+reception does not make them current public warnings. No native CAP/public alert
+is shown; schema remains not_configured and signature not_checked.
+
+The separate trace contains 76 outgoing four-byte UDP keepalives and 17 incoming
+1316-byte UDP datagrams. The two logs cover different intervals; these counts must
+not be treated as one aligned capture. Incoming packets use receiver UDP 5004 to
+the listener's UDP 5000, confirming a working return path into mirrored WSL in this
+run. A 1316-byte payload is seven 188-byte packet slots, not evidence of full-multiplex
+recording. Raw packet contents/PIDs cannot be recovered from these header-only lines.
+
+The overall direct-IP live receive/decode path now has user-supplied hardware
+acceptance evidence. Success followed the keepalive patch with the earlier firewall
+exception in place; the logs do not isolate the independent contribution of each.
+Physical busy-tuner races, shutdown cleanup and unattended reliability remain
+separate acceptance checks. Original 56-packet recording validation remains pending.
+Neither supplied raw log is committed or published; only this aggregate evidence
+summary is versioned.
