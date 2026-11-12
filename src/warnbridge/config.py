@@ -1,6 +1,6 @@
 import tomllib
 from dataclasses import dataclass, field
-from ipaddress import IPv4Address
+from ipaddress import IPv4Address, ip_network
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -26,6 +26,7 @@ class Config:
     rf_poll_interval: float = 5.0
     rf_stale_after: float = 20.0
     heartbeat_stale_after: float = 45.0
+    web_allowed_networks: list[str] | None = None
     capture_dir: str = "data/captures"
     capture_segment_bytes: int = 8 * 1024 * 1024
     capture_segments: int = 8
@@ -50,6 +51,9 @@ class Config:
             raise ValueError("RF poll interval must be >=1s; stale threshold must exceed interval")
         if self.heartbeat_stale_after <= 0:
             raise ValueError("heartbeat_stale_after must be positive")
+        if self.web_allowed_networks is not None:
+            for network in self.web_allowed_networks:
+                ip_network(network)
         if self.no_data_warning <= 0:
             raise ValueError("no_data_warning must be positive")
         if min(self.capture_segments, self.max_rejected) < 1:

@@ -19,6 +19,8 @@
   offline Natural Earth reference basemap and optional online street tiles. Conservative
   same-source declared CAP timing/update/cancel projection without evidence mutation.
 - Non-Link-Test CMAC original-field review and replay-only synthetic alert scenarios.
+- Linux live Docker receiver/web stack with native CLI, LAN bind/client subnet
+  restrictions, host routing, persistent data and local no-probe setup detection.
 - Locked Python dependencies, idempotent setup, offline validation, Docker and CI.
 - Separate saved-web-response import with no network polling or guessed comparison.
 
@@ -46,8 +48,6 @@ transport. See evidence.md for exact excerpt counts and provenance. The original
   redirect rules and defensible mappings must be established before adding polling.
 - Automatic reconnect/crash-lock recovery: intentionally no force takeover. Retry
   is a new explicit capture attempt, with full idle/lock checks.
-- Containerized HDHomeRun control (the image lacks hdhomerun_config). Use the native
-  host capture process initially; container image supports API/replay/raw UDP.
 - Legacy detail embeds at most 100 observations; the new paginated delivery API/UI
   exposes full history. Archive retention/large-scale query tuning remains future work.
 

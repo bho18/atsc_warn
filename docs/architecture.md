@@ -79,3 +79,10 @@ active information block and disposed on close/source/language changes. Optional
 OpenStreetMap tiles are browser image requests only after explicit selection; they
 do not involve the receiver, ingestion process or a server proxy. See maps.md for
 licensing and reproducible source manifests.
+
+The Linux live Docker stack runs receiver and web as separate non-root processes
+on host networking, sharing only the archive volume and read-only configuration.
+The web socket binds an explicit LAN address and optional web_allowed_networks
+restricts all HTTP routes by actual client peer. Uvicorn proxy-header trust is
+disabled. No public ports, new reverse proxy or automatic firewall changes are
+introduced. See docker-live.md for routing, persistence and safe startup.

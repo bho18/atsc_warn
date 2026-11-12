@@ -11,12 +11,20 @@ RUN --mount=type=secret,id=proxy_ca \
     uv sync --frozen --no-dev --no-editable
 
 FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -f /run/secrets/proxy_ca ]; then \
+        apt-get -o Acquire::https::CaInfo=/run/secrets/proxy_ca update && \
+        apt-get -o Acquire::https::CaInfo=/run/secrets/proxy_ca install -y --no-install-recommends hdhomerun-config; \
+    else \
+        apt-get update && apt-get install -y --no-install-recommends hdhomerun-config; \
+    fi && rm -rf /var/lib/apt/lists/*
 RUN useradd --uid 10001 --create-home warnbridge && mkdir /data && chown 10001:10001 /data
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY --chmod=644 config/container.toml /app/config/container.toml
 COPY --chmod=644 tests/fixtures/reconstructed.ts /app/tests/fixtures/reconstructed.ts
 COPY --chmod=755 scripts/container-start.sh /app/scripts/container-start.sh
+COPY --chmod=644 scripts/container-health.py /app/scripts/container-health.py
 RUN chmod 755 /app/config /app/tests /app/tests/fixtures /app/scripts
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 USER 10001:10001

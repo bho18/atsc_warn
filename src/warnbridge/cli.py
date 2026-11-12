@@ -277,7 +277,10 @@ def run(args: argparse.Namespace) -> int:
 
         from warnbridge.api.app import create_app
 
-        uvicorn.run(create_app(config), host=config.bind, port=config.port, workers=1)
+        # LAN restrictions use the actual socket peer, never client-supplied proxy headers.
+        uvicorn.run(
+            create_app(config), host=config.bind, port=config.port, workers=1, proxy_headers=False
+        )
         return 0
     if args.command == "doctor":
         result: dict[str, Any] = {

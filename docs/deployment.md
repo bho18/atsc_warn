@@ -114,17 +114,22 @@ next exclusive DB writer marks previously running sessions abandoned.
 
 ## Persistent data and Docker
 
+For the ThinkCentre's live receiver and LAN-only UI use [docker-live.md](docker-live.md).
+It installs the native CLI in the image, detects LAN settings locally, separates
+receiver/web processes and persists their shared archive. The instructions below
+also describe the original separate replay demonstration.
+
+
 Default `docker compose up --build -d` uses a named volume, non-root UID 10001,
 read-only root filesystem, no capabilities, loopback-only port 8080 and rotated
 10 MiB × 3 container logs. A missing DB gets only the local synthetic replay demo.
 Restart keeps existing data and does not repeat the demo. Images are built locally,
 not published. Stop with `docker compose down` (no `-v`, which would remove data).
 
-The container image intentionally does not contain hdhomerun_config. Initial live
-hardware deployment should use **native capture plus native serve** with the same
-config/database. Native read-only API can run alongside one ingestion writer.
-Container replay/UDP/API are tested separately; do not assume a named demo volume
-is the same database as the native `data/` directory. To share it deliberately,
+The image now includes Debian's hdhomerun-config. `compose.live.yaml` provides
+native HDHomeRun live reception on Linux host networking and an independently
+restricted web server. Native processes remain an alternative. Do not assume a
+named demo/live Docker volume is the same database as the native `data/` directory. To share it deliberately,
 mount the native data directory at /data and choose a container UID/GID that can
 write it; preserve permissions and backups first.
 

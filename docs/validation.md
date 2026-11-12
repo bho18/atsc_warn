@@ -381,3 +381,62 @@ data. Real OTA alert/CMAC geography acceptance, current CMAC mapping/schema,
 authenticity and production tile-provider availability remain unverified. No new
 hardware/network configuration, container publication or external notification was
 performed. See maps.md for dependency/data licensing and provider behavior.
+
+## ThinkCentre live Docker and internal access — November 11, 2026 (America/Chicago)
+
+Added `compose.live.yaml`, separate from the existing replay demo. Receiver and web
+run as unprivileged, read-only containers on Linux host networking, with a shared
+persistent archive and read-only local TOML. Generated settings bind the web/UDP
+sockets to the host LAN IPv4, constrain HTTP clients to selected internal subnets,
+and leave raw/full-multiplex recording off. The setup helper reads local iproute2
+JSON only; no receiver query or probe is sent. Existing config is never overwritten.
+
+The Docker image now includes Debian trixie's hdhomerun-config `20230719-1+b4`.
+Its short usage output omits keyed commands, so Debian's source was inspected to
+confirm main_cmd accepts the existing key-before-get/set adapter syntax. No native
+hardware command/discovery/tuning was run in cloud. Binary presence/UID/package
+were inspected with Docker networking disabled; usage exits 1 as expected.
+
+Executed `./scripts/setup.sh` and `./scripts/validate.sh`: **151 tests passed**, Ruff
+lint/format passed for 48 Python files, strict mypy passed for 21 source files.
+Reconstructed replay remains 4 packets / 2 messages / 2 CRC passes, no rejections
+or continuity failures. The existing upstream Starlette HTTPX warning remains.
+New tests cover route-only LAN detection, explicit/configured host IP checks,
+refusal of public/wildcard/bridge binds and public/ambiguous CIDRs, no config
+replacement, TOML live settings, all-route allow/deny checks, IPv4-mapped peers,
+invalid networks, and ignoring spoofed forwarding headers. `warnbridge serve`
+disables Uvicorn's proxy-header interpretation so decisions use socket peers.
+
+The managed local Docker daemon was selected explicitly with inherited endpoint,
+context and TLS selectors removed (credentials/config preserved). Built locally:
+
+```sh
+docker --host=unix:///var/run/docker.sock build \
+  --secret id=proxy_ca,src=/etc/ssl/certs/ca-certificates.crt \
+  -t warnbridge:live-local .
+```
+
+Both Compose files pass `config --quiet`; CI now checks both. The optional
+`.venv/bin/python -m scripts.container_live_smoke` passed with a uniquely named test
+project and synthetic volume. It replaces live tuner control with raw loopback
+UDP; no real device IP is contacted. Actual containers verified:
+
+- UID/GID 10001:10001, capabilities dropped, no-new-privileges, read-only root and
+  config mount, host network, no published Docker ports or Docker socket mount.
+- A mixed non-WARN/WARN loopback datagram produces exactly one heartbeat delivery
+  and recent connection state; no raw capture directory is created.
+- Actual TCP source 127.0.0.2 is denied even with a trusted-looking X-Forwarded-For;
+  permitted 127.0.0.1 remains allowed with an untrusted-looking forwarded address.
+  Static maps and APIs follow the same policy.
+- Both custom container health checks become healthy from local API/database state.
+- The web process restarts without reimporting/deleting data. Receiver SIGTERM
+  finishes the session and health becomes stopped. No tracebacks appear in logs.
+
+The test cleans up only its own newly created containers/volume; the pre-existing
+loopback replay demo is untouched. No image was published. The live stack has not
+been deployed on the user's ThinkCentre from cloud; physical HDHomeRun firmware,
+routing/firewall and owned-tuner release still require the supplied local preflight
+and acceptance. Host address detection is mock-tested; the real address is read
+when the user runs setup on homeserver, never inferred from the laptop's old IP.
+The application has no login system; keep public reverse proxies/port forwarding
+away from this internal stack. See docker-live.md for limits, migration and updates.

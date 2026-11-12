@@ -32,6 +32,24 @@ logging, optional raw diagnostics, and WSL UDP routing. Discovery can fail acros
 VLANs/WSL NAT; --host bypasses broadcast. WSL must also have a working UDP return
 path; the listener prints the chosen return IP and warns when no TS arrives.
 
+## ThinkCentre Docker deployment (internal network)
+
+On the Ubuntu `homeserver`, update this branch and run:
+
+```sh
+python3 scripts/configure_docker.py
+docker compose -f compose.live.yaml build
+docker compose -f compose.live.yaml run --rm --no-deps receiver discover --config /app/config/live.toml
+docker compose -f compose.live.yaml up -d
+```
+
+The local script detects the host LAN address/subnet from its routing table and
+prints the web URL. The stack includes native HDHomeRun control, live reception,
+a persistent archive and separate web/receiver containers. The UI binds only that
+LAN address and enforces a client subnet allowlist. No public port publishing,
+Caddy changes or raw transport recording. See [the live Docker runbook](docs/docker-live.md)
+for startup checks, other trusted VLANs, logs, data migration and updates.
+
 ## Quick offline demonstration
 
 With Python 3.12+ and uv 0.13.5 installed:
@@ -71,7 +89,8 @@ Docker demonstration: `docker compose up --build -d`. It imports the reconstruct
 fixture only when the data volume has no database and binds host loopback. The
 image runs as UID 10001, without privileges, with persistent data and bounded logs.
 No additional Caddy instance is installed. Read the deployment runbook before live
-capture; the image does not include the HDHomeRun CLI.
+capture. The image now includes the HDHomeRun CLI; live Linux deployment uses
+`compose.live.yaml` separately from this replay demo.
 
 ## Boundaries and project map
 

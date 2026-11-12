@@ -187,3 +187,14 @@ its standard HTTPS URL, visible attribution and browser caching/referrer behavio
 without prefetch or offline downloads. Cloud browser tests substitute local mock
 images and failures, never fetching real public tiles. Default map rendering makes
 no external requests; its reference geography is the separately licensed local data.
+
+## Native CLI in the live Docker image
+
+The Debian trixie hdhomerun-config package built here is `20230719-1+b4`, from
+libhdhomerun `20230719-1`. Its installed copyright/license files remain in the image.
+Package metadata: https://packages.debian.org/trixie/hdhomerun-config . Debian's
+source view was inspected at
+https://sources.debian.org/src/libhdhomerun/20230719-1/hdhomerun_config.c/ : main_cmd
+accepts the `key <uint32>` prefix before get/set, despite its omission from the
+short usage text. This supports the existing owned-key adapter syntax. The image
+was checked without networking; real firmware behavior still needs local acceptance.

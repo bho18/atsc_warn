@@ -1,9 +1,10 @@
 from collections.abc import Iterator
+from ipaddress import ip_address, ip_network
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from warnbridge.config import Config
@@ -15,6 +16,11 @@ def create_app(config: Config | None = None) -> FastAPI:
     # Schema setup only. Serving never starts a receiver, including reload/workers.
     Store(config.database).close()
     app = FastAPI(title="WarnBridge", version="0.1.0", docs_url=None, redoc_url=None)
+    allowed = (
+        [ip_network(network) for network in config.web_allowed_networks]
+        if config.web_allowed_networks is not None
+        else None
+    )
 
     def database() -> Iterator[Store]:
         store = Store(config.database, readonly=True)
@@ -27,7 +33,19 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def headers(request: Any, call_next: Any) -> Any:
-        response = await call_next(request)
+        permitted = allowed is None
+        if allowed is not None and request.client:
+            try:
+                address = ip_address(request.client.host)
+                address = getattr(address, "ipv4_mapped", None) or address
+                permitted = any(address in network for network in allowed)
+            except ValueError:
+                permitted = False
+        response = (
+            await call_next(request)
+            if permitted
+            else JSONResponse({"detail": "Access restricted to configured internal networks"}, 403)
+        )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; script-src 'self'; style-src 'self'; "

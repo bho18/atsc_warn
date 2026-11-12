@@ -82,3 +82,14 @@ fit, safe area popups, mobile resize, language cleanup, antimeridian/polar handl
 and optional street-tile success/failure with locally mocked images. It never
 contacts a real tile provider or a receiver. Include the same-origin `/assets/`
 path when configuring your reverse proxy; no new server route/config is required.
+
+Live Docker: `compose.live.yaml` is separate from the replay demo. Generate local
+settings on the target host with `python3 scripts/configure_docker.py`, which only
+reads iproute2 JSON and writes an ignored TOML. Tests mock those route/address
+reads; do not run device discovery/tuning in cloud. Native hardware package comes
+from Debian's hdhomerun-config. Build locally, then run the optional
+`.venv/bin/python -m scripts.container_live_smoke`. It selects the local Docker
+socket explicitly, creates a uniquely named synthetic test project/volume, replaces
+HDHomeRun listen with raw loopback UDP, and cleans up only its own data. It checks
+real HTTP peer restrictions/forwarding-header refusal, reception, container
+isolation, persistent data, restart and stop. No physical tuner is used.
