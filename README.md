@@ -50,7 +50,7 @@ docker compose up -d
 The helper detects the ThinkCentre's LAN address/subnet and prints the web URL.
 The UI binds that private address and enforces the internal client allowlist.
 Receiver and web containers share a persistent archive; raw stream recording is off.
-The deployment image is `ghcr.io/bho18/warnbridge:edge`.
+The public deployment image is `ghcr.io/bho18/warnbridge:edge`; no registry login is needed.
 
 For each published update:
 

@@ -461,3 +461,32 @@ reuses existing SHA-tagged digests on reruns and promotes the current source hea
 to edge. Registry publication, first-package visibility and pull verification are
 recorded after executing the workflow; a configured workflow alone is not a claim
 that an image exists or is anonymously accessible.
+
+
+Actual registry publication and installation acceptance:
+
+- Publishing run https://github.com/bho18/atsc_warn/actions/runs/43227742882
+  completed validation, image build/push and edge promotion successfully for
+  source `996228a4481a2961e1890ef63d106fa718c435ab`.
+- Both `ghcr.io/bho18/warnbridge:edge` and
+  `ghcr.io/bho18/warnbridge:sha-996228a4481a2961e1890ef63d106fa718c435ab`
+  returned HTTP 200 through anonymous GHCR tokens. Manifest bytes independently
+  hash to `sha256:72e39a5b57089a83d97363e980398d10db667968c0e490d7875e4a1cbdb3f298`,
+  matching the registry digest header and the publishing job output.
+- An actual Docker pull of edge downloaded all layers and verified that digest.
+  Image inspection confirms Linux AMD64, UID 10001:10001 and the expected source
+  revision label. The public package page also returns HTTP 200; no manual package
+  visibility switch or registry login is required for installation.
+- The exact two raw deployment/helper download URLs return HTTP 200 and match the
+  checked source files. No Git clone/local image build is part of the host path.
+- `python -m scripts.container_live_smoke --deployment --image
+  ghcr.io/bho18/warnbridge:edge` starts the pulled image with Compose copied into an
+  empty temporary directory. It verifies there is no build context, then repeats
+  loopback reception, private-peer restrictions, map assets, health, persistence,
+  non-root/read-only isolation and graceful stop checks. All passed. The test uses
+  synthetic raw UDP and never contacts the physical receiver.
+
+The user explicitly requested pullable images and image updates, authorizing this
+GHCR publication. No private captures, runtime configuration or credentials were
+published. The host still needs to run the supplied installation commands; cloud
+acceptance does not claim an installation on the ThinkCentre or physical reception.

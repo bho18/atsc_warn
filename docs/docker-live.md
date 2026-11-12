@@ -46,11 +46,10 @@ docker compose logs --tail=50 -f receiver
 docker compose logs --tail=50 web
 ```
 
-The default image is `ghcr.io/bho18/warnbridge:edge`. The registry pull must succeed
-before starting. For a public GHCR package, no Docker login is required. If GHCR
-reports denied/unauthorized, the package owner must check publication and package
-visibility; a public GitHub source repository does not by itself make its container
-package public.
+The published image is `ghcr.io/bho18/warnbridge:edge`. Anonymous manifest access
+and a complete Docker pull have been verified; no registry login or token is needed.
+Each successful source-branch publishing workflow updates `edge`. You control when
+the ThinkCentre installs an update by running the pull/up commands below.
 
 ## Pull an update
 

@@ -1,9 +1,11 @@
 """Test the live Compose layout with synthetic loopback UDP, never a physical tuner.
 
-Requires a locally built warnbridge:live-local image and the local Docker socket.
+Requires an already available image and the local Docker socket. No build or pull
+is performed; --image can select a previously pulled published image.
 Creates/removes only its own uniquely named containers and synthetic test volume.
 """
 
+import argparse
 import http.client
 import json
 import os
@@ -26,6 +28,18 @@ def free_port(kind):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--deployment",
+        action="store_true",
+        help="test downloaded image-only Compose from an empty directory",
+    )
+    parser.add_argument(
+        "--image",
+        default="warnbridge:live-local",
+        help="already available local image; this test never pulls/builds",
+    )
+    args = parser.parse_args()
     environment = os.environ.copy()
     for name in (
         "DOCKER_HOST",
@@ -76,12 +90,17 @@ def main():
             )
         )
         environment["WARNBRIDGE_LIVE_CONFIG"] = str(config)
+        environment["WARNBRIDGE_IMAGE"] = args.image
+        base_compose = ROOT / "compose.live.yaml"
+        if args.deployment:
+            base_compose = Path(directory) / "compose.yaml"
+            base_compose.write_bytes((ROOT / "compose.deploy.yaml").read_bytes())
         compose = [
             "compose",
             "-p",
             project,
             "-f",
-            str(ROOT / "compose.live.yaml"),
+            str(base_compose),
             "-f",
             str(override),
         ]
@@ -99,6 +118,9 @@ def main():
 
         try:
             run([*compose, "config", "--quiet"])
+            if args.deployment:
+                layout = json.loads(run([*compose, "config", "--format", "json"]).stdout)
+                assert all("build" not in service for service in layout["services"].values())
             run([*compose, "up", "-d", "--no-build", "--pull", "never"])
             deadline = time.monotonic() + 25
             while time.monotonic() < deadline:

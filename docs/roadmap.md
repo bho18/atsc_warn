@@ -21,6 +21,8 @@
 - Non-Link-Test CMAC original-field review and replay-only synthetic alert scenarios.
 - Linux live Docker receiver/web stack with native CLI, LAN bind/client subnet
   restrictions, host routing, persistent data and local no-probe setup detection.
+- Public GHCR images with tested edge updates, commit-specific tags and a fresh
+  image-only installation requiring no host checkout/build.
 - Locked Python dependencies, idempotent setup, offline validation, Docker and CI.
 - Separate saved-web-response import with no network polling or guessed comparison.
 
