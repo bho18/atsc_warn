@@ -22,7 +22,8 @@ The configuration helper reads the ThinkCentre's own network settings and prints
 the LAN web URL. It uses the existing receiver address `192.168.4.159` and physical
 RF channel 7, detects the host LAN address/subnet, and writes
 `config/local.docker.toml`. Reading the routing table does not query or tune the
-HDHomeRun. An existing local configuration is never overwritten.
+HDHomeRun. An existing local configuration is never overwritten. Run this helper
+once for first installation; normal image updates keep that file and do not rerun it.
 
 Pull the image and start the two containers:
 
@@ -48,8 +49,11 @@ docker compose logs --tail=50 web
 
 The published image is `ghcr.io/bho18/warnbridge:edge`. Anonymous manifest access
 and a complete Docker pull have been verified; no registry login or token is needed.
-Each successful source-branch publishing workflow updates `edge`. You control when
-the ThinkCentre installs an update by running the pull/up commands below.
+The `.github/workflows/container.yaml` workflow validates source pushes to
+`codex/warnbridge-initial`, publishes Linux AMD64 commit-specific images, and
+promotes the current passing revision to `edge`. A source push is not a completed
+image release until that workflow succeeds. You control when the ThinkCentre
+installs an update by running the pull/up commands below.
 
 ## Pull an update
 

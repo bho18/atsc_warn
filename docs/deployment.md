@@ -1,10 +1,39 @@
 # homeserver deployment and local acceptance
 
-Target: Ubuntu AMD64, existing HDHomeRun CLI/Jellyfin/Caddy. Do not change those
-services, firmware, VLANs, firewall rules or public ports as part of this delivery.
+Target: the Ubuntu AMD64 ThinkCentre named `homeserver`. The image supplies the
+HDHomeRun CLI; no host CLI installation is required. Preserve existing Jellyfin,
+Caddy, firmware, VLANs, firewall settings and public-port policy.
 No cloud process contacted the historical receiver IP.
 
-## Get the local delivery onto homeserver
+## Default: fresh Docker installation and image updates
+
+Use [the ThinkCentre Docker runbook](docker-live.md) for the user deployment.
+It starts with a new host directory and downloads a Compose file plus the local
+configuration helper. It requires no WarnBridge checkout, host venv or local build.
+The public image is `ghcr.io/bho18/warnbridge:edge`; it includes the native tuner CLI.
+The helper detects the ThinkCentre's private address and prints the internal web URL.
+
+The installed Compose file is named `compose.yaml`, downloaded from
+`compose.deploy.yaml`. Normal updates run in that host directory:
+
+```sh
+cd ~/warnbridge
+docker compose pull
+docker compose up -d
+```
+
+The source publishing workflow validates each source revision before updating
+`edge`. Local configuration and the named archive volume survive container updates.
+A previous WSL test does not establish an installation on homeserver. Follow the
+fresh-install sequence unless the user confirms a completed deployment. Keep the
+web bind and client allowlist internal; do not add public proxy/forwarding rules.
+
+## Optional native/source installation and acceptance
+
+The remaining native commands are an alternative for source development and private
+capture acceptance. They are not prerequisites for the Docker installation above.
+
+### Get a source checkout
 
 The user has authorized this repository to be public. Clone the delivered review
 branch (or use a supplied source bundle when remote access is unavailable):
@@ -19,13 +48,13 @@ export PATH="$HOME/.local/share/warnbridge-tools/bin:$PATH"
 ./scripts/validate.sh
 ```
 
-For live reception follow [live-receiver.md](live-receiver.md), including WSL network
-requirements. It uses native discovery or direct IP, reads tuner availability/current
+For native live reception follow [live-receiver.md](live-receiver.md), with
+WSL-specific network notes when applicable. It uses native discovery or direct IP, reads tuner availability/current
 channels, leases an idle tuner, applies the WARN PID filter and outputs JSONL while
 processing UDP in memory. Raw journaling is off by default. The native Linux CLI
 package on Ubuntu is `hdhomerun-config`. No receiver is contacted by setup/validation.
 
-## Original-capture acceptance, before touching tuners
+### Original-capture acceptance in a source checkout
 
 Use a fresh output directory for the private original. Do not commit/upload it.
 
@@ -52,7 +81,7 @@ change the decoder to hardcode that baseline. Optionally decode the full multipl
 with a separate output directory; it may not be the identical recording segment.
 Untimed file reception remains unknown, irrespective of file mtime/import clock.
 
-## Read-only hardware preflight on homeserver
+### Native read-only hardware preflight
 
 The following address is the historical example; confirm the current host/IP
 locally. Inspect **both** tuners without tuning, setting a target or scanning:
@@ -106,29 +135,33 @@ of the candidate key. If ownership changed, device-side keyed writes must refuse
 no force/unkeyed cleanup or stale restoration follows. Tests mock these outcomes;
 firmware behavior still requires the opt-in local check.
 
-No automatic reconnect or takeover. After control-network failure, cleanup may be
-impossible; it is reported as an error. SIGKILL/power loss cannot guarantee cleanup.
+The receiver process performs no in-place automatic reconnect or takeover. Docker
+may restart an exited process, repeating its normal idle/owned-lock checks; an
+unhealthy running container is not automatically retuned. After control-network
+failure, cleanup may be impossible; it is reported as an error. SIGKILL/power loss cannot guarantee cleanup.
 The next capture must repeat inspection and refuse a remaining/foreign lock. Have
 an operator investigate ownership; this application never force-clears it. The
 next exclusive DB writer marks previously running sessions abandoned.
 
-## Persistent data and Docker
+## Source-build and replay Docker alternatives
 
 For the ThinkCentre's live receiver and LAN-only UI use [docker-live.md](docker-live.md).
 It downloads a published image without a Git checkout/local build, detects LAN
-settings locally, separates receiver/web processes and persists their shared archive. The instructions below
-also describe the original separate replay demonstration.
+settings locally, separates receiver/web processes and persists their shared archive.
+The instructions below describe the separate source/replay alternatives.
 
-
-Default `docker compose up --build -d` uses a named volume, non-root UID 10001,
+From a source checkout, the replay demo `docker compose up --build -d` uses a
+named volume, non-root UID 10001,
 read-only root filesystem, no capabilities, loopback-only port 8080 and rotated
 10 MiB × 3 container logs. A missing DB gets only the local synthetic replay demo.
 Restart keeps existing data and does not repeat the demo. This replay example
-builds locally; `compose.deploy.yaml` instead pulls the published GHCR image. Stop with `docker compose down` (no `-v`, which would remove data).
+builds locally; `compose.deploy.yaml` instead pulls the published GHCR image.
+Stop with `docker compose down` (no `-v`, which would remove data).
 
-The image now includes Debian's hdhomerun-config. `compose.live.yaml` provides
-native HDHomeRun live reception on Linux host networking and an independently
-restricted web server. Native processes remain an alternative. Do not assume a
+The image includes Debian's hdhomerun-config. Production `compose.deploy.yaml`
+pulls that image. Developer `compose.live.yaml` builds it from a source checkout
+while retaining the same host networking and restricted web server. Native
+processes remain a separate alternative. Do not assume a
 named demo/live Docker volume is the same database as the native `data/` directory. To share it deliberately,
 mount the native data directory at /data and choose a container UID/GID that can
 write it; preserve permissions and backups first.
@@ -140,8 +173,9 @@ the container's bridge IP. Raw UDP and RTP are not interchangeable. Existing VLA
 routing/ACLs must already permit control and return traffic. Diagnose locally;
 this project does not open ports or reconfigure networking. Linux host networking
 is an optional deployment choice for raw UDP, separate from the default bridge
-replay setup; it is not needed for native host capture. Keep the API bound to
-127.0.0.1 if using host networking.
+replay setup; it is not needed for native host capture. In an ad hoc raw-UDP
+experiment, keep the API on loopback unless you deliberately configure the private
+LAN bind and client allowlist used by the production deployment.
 
 The existing native Caddy may deliberately proxy to 127.0.0.1:8080. A containerized
 Caddy cannot reach the host by its own loopback; use your existing deliberately

@@ -83,7 +83,11 @@ and optional street-tile success/failure with locally mocked images. It never
 contacts a real tile provider or a receiver. Include the same-origin `/assets/`
 path when configuring your reverse proxy; no new server route/config is required.
 
-Live Docker: `compose.live.yaml` is separate from the replay demo. Generate local
+For end-user ThinkCentre installation/update, use the image-only path in
+[docker-live.md](docker-live.md) and `compose.deploy.yaml`. No source checkout or
+build is needed on that host. The following is for developer source builds only.
+
+Developer live Docker: `compose.live.yaml` is separate from the replay demo. Generate local
 settings on the target host with `python3 scripts/configure_docker.py`, which only
 reads iproute2 JSON and writes an ignored TOML. Tests mock those route/address
 reads; do not run device discovery/tuning in cloud. Native hardware package comes

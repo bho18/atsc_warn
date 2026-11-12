@@ -1,4 +1,10 @@
-# Live HDHomeRun reception (including WSL)
+# Native HDHomeRun reception (including WSL)
+
+The default ThinkCentre deployment uses published Docker images; start with
+[docker-live.md](docker-live.md). This guide covers the optional native/source
+receiver workflow and historical WSL troubleshooting. A laptop run does not imply
+that WarnBridge is installed on homeserver.
+
 
 Install Python 3.12+, the locked app dependencies (`./scripts/setup.sh`), and the
 native SiliconDust CLI inside the Linux/WSL environment. On Ubuntu the CLI package

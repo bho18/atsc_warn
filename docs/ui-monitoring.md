@@ -109,6 +109,21 @@ routes restrict an observation to its requested content ID and expose no file pa
 
 ## Upgrading an existing installation
 
+For the ThinkCentre Docker deployment, use the existing downloaded Compose directory:
+
+```sh
+cd ~/warnbridge
+docker compose pull
+docker compose up -d
+```
+
+The config and named archive volume remain in place. Do not run Git/source setup
+or regenerate local config for a normal image update. For a first install, use
+[docker-live.md](docker-live.md), which starts from an empty directory. The native
+commands below apply only to an intentional source/native installation.
+
+### Native/source upgrade alternative
+
 Stop **both** the listener and web server before updating. The alert inbox retains
 schema 2. For installations still on schema 1, database migration 002
 adds a per-session latest RF snapshot table and an observation index, taking schema

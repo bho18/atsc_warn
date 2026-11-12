@@ -10,28 +10,6 @@ The selected repository is `atsc_warn`; the application/package is `warnbridge`.
 Public source delivery is authorized. Private captures, credentials and runtime
 state remain excluded from Git.
 
-## Live HDHomeRun reception
-
-Install SiliconDust's `hdhomerun_config` in your Linux/WSL instance, then:
-
-```sh
-.venv/bin/warnbridge discover
-.venv/bin/warnbridge discover --host 192.168.4.159
-.venv/bin/warnbridge listen --host 192.168.4.159 --channel 7
-```
-
-The IP/RF channel are historical examples: use your device and station. Omit --host
-for native auto-discovery of exactly one receiver. Omit --tuner to acquire the first
-idle tuner safely; add --tuner 0 for explicit selection. Output is live JSONL;
-SQLite stores decoded WARN evidence. **Raw transport recording is off by default.**
-Routine capture filters PID 0x0911 on the receiver and discards unrelated packets.
-Use --record-raw only for deliberate diagnostics.
-
-See [the live receiver guide](docs/live-receiver.md) for channel/return-IP settings,
-logging, optional raw diagnostics, and WSL UDP routing. Discovery can fail across
-VLANs/WSL NAT; --host bypasses broadcast. WSL must also have a working UDP return
-path; the listener prints the chosen return IP and warns when no TS arrives.
-
 ## ThinkCentre Docker deployment (internal network)
 
 For a fresh installation on `homeserver`, download two small deployment files;
@@ -62,6 +40,28 @@ docker compose up -d
 
 [The Docker runbook](docs/docker-live.md) covers status/logs, registry access,
 version pinning/rollback, other trusted VLANs and persistent data.
+
+## Native HDHomeRun reception (alternative)
+
+For a deliberate source/native installation, install SiliconDust's `hdhomerun_config` in your Linux/WSL instance, then:
+
+```sh
+.venv/bin/warnbridge discover
+.venv/bin/warnbridge discover --host 192.168.4.159
+.venv/bin/warnbridge listen --host 192.168.4.159 --channel 7
+```
+
+The IP/RF channel are historical examples: use your device and station. Omit --host
+for native auto-discovery of exactly one receiver. Omit --tuner to acquire the first
+idle tuner safely; add --tuner 0 for explicit selection. Output is live JSONL;
+SQLite stores decoded WARN evidence. **Raw transport recording is off by default.**
+Routine capture filters PID 0x0911 on the receiver and discards unrelated packets.
+Use --record-raw only for deliberate diagnostics.
+
+See [the live receiver guide](docs/live-receiver.md) for channel/return-IP settings,
+logging, optional raw diagnostics, and WSL UDP routing. Discovery can fail across
+VLANs/WSL NAT; --host bypasses broadcast. WSL must also have a working UDP return
+path; the listener prints the chosen return IP and warns when no TS arrives.
 
 ## Quick offline demonstration
 
@@ -102,8 +102,8 @@ Docker demonstration: `docker compose up --build -d`. It imports the reconstruct
 fixture only when the data volume has no database and binds host loopback. The
 image runs as UID 10001, without privileges, with persistent data and bounded logs.
 No additional Caddy instance is installed. Read the deployment runbook before live
-capture. The image now includes the HDHomeRun CLI; live Linux deployment uses
-`compose.live.yaml` separately from this replay demo.
+capture. The image includes the HDHomeRun CLI. Normal ThinkCentre deployment uses
+`compose.deploy.yaml`; `compose.live.yaml` is the developer source-build alternative.
 
 ## Boundaries and project map
 
@@ -139,4 +139,5 @@ The UI defaults to **Alerts**, with check traffic in **Diagnostics**. RF status 
 polled by the live listener and shows stale/error/stopped states. Heartbeat freshness
 is separate from RF lock and alert authenticity. Existing evidence is retained;
 the alert view needs no database migration beyond schema 2. Restart listener and
-server after upgrading. See [UI monitoring](docs/ui-monitoring.md).
+server after a native/source upgrade. Docker users update with pull/up as above.
+See [UI monitoring](docs/ui-monitoring.md).

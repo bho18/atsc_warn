@@ -490,3 +490,20 @@ The user explicitly requested pullable images and image updates, authorizing thi
 GHCR publication. No private captures, runtime configuration or credentials were
 published. The host still needs to run the supplied installation commands; cloud
 acceptance does not claim an installation on the ThinkCentre or physical reception.
+
+## Deployment documentation contract
+
+Documented the user-confirmed image-only ThinkCentre installation/update workflow
+as standing instructions in AGENTS.md. README now leads with Docker deployment;
+the general deployment, UI upgrade, development and native receiver guides clearly
+separate normal image pulls from optional source/native/replay workflows. The
+contract records the fresh-host assumption, public GHCR image, target-host LAN
+detection, internal bind/allowlist, publication checks, persistent config/volume,
+Compose-file refresh and pull/up updates. Original request and historical evidence
+were preserved. No runtime code or container configuration changed in this pass.
+
+Executed setup and the full validation script: 152 tests passed, Ruff lint/format
+and mypy passed, reconstructed replay remained 4 packets / 2 messages / 2 CRC passes.
+Existing integration tests include replay-to-API checks. All 22 local Markdown
+links in the changed guides resolved, and git diff --check passed. The existing
+upstream Starlette HTTPX test-client warning remains.
