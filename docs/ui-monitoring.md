@@ -8,6 +8,17 @@ file/stdin or All sources explicitly to inspect imported examples. Each card sho
 message status, source, receipt/sent/expiry, delivery count and readable text. Test/System/Exercise/Draft/unknown content remains clearly
 labeled and accessible. A single small note states that message signatures are not verified.
 
+CAP and CMAC counterparts share one card when CMAC explicitly names the unique CAP
+sender, identifier and sent time in the selected source group, with matching status
+and message type. The CAP supplies the headline, full details and map; a separate
+**CMAC · Phone preview** panel shows the received wireless text without truncation.
+It prefers the long-text field when available, then the standard/short text field.
+This is a phone-style presentation, not a claim that a handset received the alert.
+Both originals and all other CMAC fields remain inspectable. Delivery counts include
+both formats, while Diagnostics still counts each distinct content and reception.
+Counterparts arriving later join the existing card, even while its inspector is open.
+Similar wording alone never merges alerts; missing or ambiguous links stay separate.
+
 The inspector shows CAP languages/information blocks, severity/urgency/certainty,
 instructions, description, parameters (including wireless alert text), separate
 areas/geocodes and original coordinates. An interactive Leaflet map displays
@@ -151,9 +162,10 @@ traffic. Live heartbeat animation needs timed reception, not imported data.
 
 ## Cancellations, failure inspection and recovered deliveries
 
-Proper CAP Cancel messages do not get their own alert cards. They change referenced
-alerts to Cancelled and add their information blocks/instructions under Cancellation
-details. Cancellation history remains accessible even when the original alert was
+Proper CAP and CMAC Cancel messages do not get their own alert cards. CAP references
+change their target alerts to Cancelled and add their information blocks/instructions
+under Cancellation details, including text from a linked CMAC cancellation.
+Counterparts also share one cancellation history entry. History remains accessible even when the original alert was
 not received. Diagnostics retains all accepted records. An all-clear sent with
 `msgType=Alert` stays a new alert with its own expiry, regardless of its text.
 Missing/invalid expiry stays Status unknown rather than inventing an expiration.

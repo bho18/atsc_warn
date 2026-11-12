@@ -4,6 +4,7 @@
 window.WarnBridgeMap = (() => {
   let active = null;
   let referencePromise = null;
+  let selectedBasemap = 'offline';
   const polarLimit = 85.05112878;
   const element = (tag, text, className) => {
     const item = document.createElement(tag);
@@ -106,13 +107,20 @@ window.WarnBridgeMap = (() => {
     state.map = map;
     map.createPane('reference').style.zIndex = '150';
     map.createPane('referenceLabels').style.zIndex = '350';
+    map.createPane('alertOutlines').style.zIndex = '440';
+    map.createPane('alertAreas').style.zIndex = '450';
     map.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
     map.attributionControl.addAttribution('Made with <a href="https://www.naturalearthdata.com/">Natural Earth</a>');
     L.control.scale({metric: true, imperial: true}).addTo(map);
-    const alerts = L.geoJSON(features, {style: feature => ({
-      className: 'alert-area-shape', color: feature.properties.derived ? '#f5c678' : '#aee5bf',
-      weight: 3, fillOpacity: .2, dashArray: feature.properties.derived ? '6 4' : null
-    }), onEachFeature(feature, layer) {
+    const outlines = L.geoJSON(features, {pane: 'alertOutlines', interactive: false,
+      style: {color: '#102129', weight: 7, fill: false, opacity: .9}}).addTo(map);
+    const alertStyle = feature => ({
+      className: 'alert-area-shape', color: feature.properties.derived
+        ? (state.streets ? '#985000' : '#f5c678') : (state.streets ? '#08733f' : '#aee5bf'),
+      weight: 4, fillOpacity: .22, dashArray: feature.properties.derived ? '6 4' : null
+    });
+    const alerts = L.geoJSON(features, {pane: 'alertAreas', style: alertStyle,
+      onEachFeature(feature, layer) {
       const p = feature.properties;
       const name = `${p.number}. ${p.description}`;
       layer.bindTooltip(element('span', name));
@@ -121,6 +129,11 @@ window.WarnBridgeMap = (() => {
         ? `Circle · ${p.radius_km} km radius · approximate boundary` : 'Polygon supplied in alert'));
       layer.bindPopup(content);
     }}).addTo(map);
+    const redrawAlerts = () => {
+      outlines.setStyle({color: state.streets ? '#ffffff' : '#102129'});
+      alerts.setStyle(alertStyle);
+      outlines.bringToFront();alerts.bringToFront();
+    };
     const fit = () => map.fitBounds(alerts.getBounds(), {padding: [30, 30], maxZoom: 13, animate: false});
     state.fit.onclick = fit;
     fit();
@@ -132,6 +145,8 @@ window.WarnBridgeMap = (() => {
     state.select.onchange = () => {
       if (state.tiles) { map.removeLayer(state.tiles); state.tiles = null; }
       state.streets = state.select.value === 'streets';
+      selectedBasemap = state.select.value;
+      redrawAlerts();
       if (state.updateLabels) state.updateLabels();
       if (!state.streets) {
         state.status.textContent = state.base ? 'Offline reference map · Natural Earth' : state.referenceFailed ? 'Reference basemap unavailable · alert geometry remains visible' : 'Loading offline reference map…';
@@ -143,17 +158,22 @@ window.WarnBridgeMap = (() => {
       });
       state.tiles = tiles;
       tiles.on('load', () => {
-        if (active === state && state.tiles === tiles) state.status.textContent = 'Street map · OpenStreetMap';
+        if (active === state && state.tiles === tiles) {
+          redrawAlerts();state.status.textContent = 'Street map · OpenStreetMap';
+        }
       });
       tiles.on('tileerror', () => {
         if (active !== state || state.tiles !== tiles) return;
         map.removeLayer(tiles); state.tiles = null; state.streets = false;
         state.select.value = 'offline';
+        selectedBasemap = 'offline';redrawAlerts();
         if (state.updateLabels) state.updateLabels();
         state.status.textContent = state.base ? 'Street tiles unavailable · showing offline reference map' : 'Street tiles unavailable · alert geometry remains visible';
       });
       tiles.addTo(map);
     };
+    state.select.value = polar ? 'offline' : selectedBasemap;
+    if (state.select.value === 'streets') state.select.onchange();
     reference().then(data => addReference(state, data)).catch(() => {
       state.referenceFailed = true;
       if (active === state && !state.streets) state.status.textContent = 'Reference basemap unavailable · alert geometry remains visible';

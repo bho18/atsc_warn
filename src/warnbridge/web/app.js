@@ -80,10 +80,19 @@ function metadata(parent, entries) {
 }
 function alertBadges(parent, item) {
   const a=item.alert, badges=node('div',null,'badges');
-  badges.append(badge(a.status || 'Unknown',a.status==='Actual' ? 'actual' : ''),badge(a.message_type || 'Type unknown'),badge(a.protocol));
-  for (const source of item.sources) badges.append(badge(sourceName(source),source.startsWith('live_') ? '' : 'review'));
+  badges.append(badge(a.status || 'Unknown',a.status==='Actual' ? 'actual' : ''),badge(a.message_type || 'Type unknown'),badge((item.protocols || [a.protocol]).join(' + ')));
+  for (const source of (item.group_sources || item.sources)) badges.append(badge(sourceName(source),source.startsWith('live_') ? '' : 'review'));
   badges.prepend(badge(lifecycleNames[a.lifecycle] || a.lifecycle,`lifecycle ${a.lifecycle}`));
   parent.append(badges);
+}
+function phonePreview(text) {
+  const preview=node('section',null,'phone-preview');
+  preview.setAttribute('aria-label','CMAC phone preview');
+  const heading=node('div',null,'phone-preview-heading'),icon=node('span',null,'phone-icon');
+  icon.setAttribute('aria-hidden','true');
+  heading.append(icon,node('span','CMAC · Phone preview'));
+  preview.append(heading,node('h4','Wireless Emergency Alert'),node('p',text,'phone-message'));
+  return preview;
 }
 function renderAlerts(data) {
   $('alertCards').replaceChildren();
@@ -91,13 +100,17 @@ function renderAlerts(data) {
     const a=item.alert, info=a.infos[0], card=node('article',null,`alert-card ${a.status==='Actual' ? '' : 'non-actual'} ${a.protocol==='unknown' || item.conflict ? 'review' : ''}`);
     alertBadges(card,item);
     const title=node('button',a.headline,'alert-title');title.onclick=()=>inspect(item.id);card.append(title);
+    const wireless=item.variants?.filter(v=>v.protocol==='CMAC' && v.text) || [];
     if (info) {
+      if(wireless.length)card.append(node('p','CAP · Full alert','format-label'));
       card.append(node('p',[info.severity,info.urgency,info.certainty].filter(Boolean).join(' · ')));
-      if (info.description) card.append(node('p',info.description,'alert-preview'));
-    } else if (a.protocol==='CMAC' && a.preview) card.append(node('p',a.preview,'alert-preview'));
+      const text=info.description || info.instruction;
+      if (text) card.append(node('p',text,'alert-preview'));
+    }
+    for(const variant of wireless)card.append(phonePreview(variant.text));
     if(item.validation.xml==='invalid' || a.protocol==='unknown') card.append(node('p','Content needs review. Original bytes are available in the inspector.','state-warning'));
     card.append(node('p',`${a.sender || 'Sender unknown'} · ${a.identifier || 'Identifier unknown'}`,'content-identity'));
-    metadata(card,[['Received',item.last_received_at ? stamp(item.last_received_at) : 'Arrival unknown'],['XML sent',a.sent ? stamp(a.sent) : 'Not supplied'],['Expires',info?.expires || a.expires?.[0] ? stamp(info?.expires || a.expires[0]) : 'Not supplied'],['Deliveries',String(item.delivery_count)]]);
+    metadata(card,[['Received',(item.group_last_received_at || item.last_received_at) ? stamp(item.group_last_received_at || item.last_received_at) : 'Arrival unknown'],['XML sent',a.sent ? stamp(a.sent) : 'Not supplied'],['Expires',info?.expires || a.expires?.[0] ? stamp(info?.expires || a.expires[0]) : 'Not supplied'],['Deliveries',`${item.group_delivery_count ?? item.delivery_count}${item.variants?.length>1 ? ' across formats' : ''}`]]);
     $('alertCards').append(card);
   }
   if (!data.items.length) {
@@ -121,9 +134,15 @@ function renderInfo(parent, info) {
   if(info.event_codes.length) parent.append(node('p',`Event codes: ${info.event_codes.map(p=>`${p.name}: ${p.value}`).join(' · ')}`,'muted'));
   if(info.web) parent.append(node('p',`Web reference (not fetched): ${info.web}`,'muted'));
 }
+function inspectionState(item) {
+  const alert={...item.alert,cancellations:item.alert?.cancellations?.map(c=>({...c,
+    variants:c.variants?.map(v=>[v.message_id,v.protocol,v.text]),group_delivery_count:undefined,
+    group_last_received_at:undefined}))};
+  return JSON.stringify([alert,item.relationships,item.conflict,item.variants?.map(v=>[v.message_id,v.protocol,v.text])]);
+}
 function renderAlertDetail(item) {
   window.WarnBridgeMap.clear();
-  selectedAlertState=JSON.stringify([item.alert,item.relationships,item.conflict]);
+  selectedAlertState=inspectionState(item);
   const target=$('alertDetail');target.replaceChildren();
   if(!item.alert) {$('evidence').open=true;return;}
   $('evidence').open=false;
@@ -137,15 +156,30 @@ function renderAlertDetail(item) {
     label.append(select);body.append(label);
     const content=node('div');body.append(content);renderInfo(content,a.infos[0]);select.onchange=()=>renderInfo(content,a.infos[Number(select.value)]);
   } else if(a.protocol==='CMAC') {
-    if(a.preview)body.append(node('h3','Message text'),node('p',a.preview,'message-text'));
+    if(a.preview && !(item.variants?.length>1))body.append(phonePreview(a.preview));
     const fields=node('details');fields.append(node('summary','Original CMAC fields'));
     const dl=node('dl',null,'field-list');for(const segment of a.segments)dl.append(node('dt',segment.field),node('dd',segment.value));fields.append(dl);body.append(fields);
   } else body.append(node('p','No information blocks supplied. A cancellation can refer to an earlier alert without repeating its text.'));
+  if(item.variants?.length>1) {
+    const section=node('section',null,'message-variants');section.append(node('h3','Full alert and phone text'));
+    section.append(node('p','CAP carries the full alert details and affected areas. CMAC carries the concise text intended for phones.','muted'));
+    for(const variant of item.variants) {
+      const block=node('div',null,'message-variant');block.append(node('h4',variant.protocol));
+      if(variant.protocol==='CMAC' && variant.text)block.append(phonePreview(variant.text));
+      if(variant.message_id!==item.id) {const b=node('button',`Inspect original ${variant.protocol}`);b.onclick=()=>inspect(variant.message_id);block.append(b);}
+      else block.append(node('p','Currently displayed','muted'));
+      section.append(block);
+    }
+    body.append(section);
+  }
   if(a.cancellations?.length) {
     const section=node('section',null,'cancellation-content');section.append(node('h3','Cancellation details'));
     for(const cancellation of a.cancellations) {
       section.append(node('p',`Cancelled · ${stamp(cancellation.sent)}`));
       if(cancellation.note)section.append(node('p',cancellation.note,'message-text'));
+      for(const variant of cancellation.variants || []) {
+        if(variant.text)section.append(node('h4','Wireless cancellation text'),node('p',variant.text,'message-text'));
+      }
       for(const info of cancellation.infos) {
         const block=node('div',null,'cancellation-info');
         block.append(node('h4',`${info.language} · ${info.headline || info.event || 'Cancellation'}`));
@@ -271,7 +305,7 @@ async function refreshInspection() {
   if(!mid) return;
   const item=await get(`/api/v1/messages/${mid}?${query()}`);
   if(mid!==selectedMessage || serial!==inspectSerial) return;
-  const signature=JSON.stringify([item.alert,item.relationships,item.conflict]);
+  const signature=inspectionState(item);
   if(signature!==selectedAlertState) {
     const language=$('alertLanguage')?.value, evidenceOpen=$('evidence').open;
     renderAlertDetail(item);
@@ -302,7 +336,7 @@ async function refresh(force = false) {
     renderRF(health);
     renderHeartbeat(health.connection);
     observation('linktest','linkSource',health.last_observed.link_test);
-    $('countLabel').textContent=mode==='alerts' ? `ALERT CONTENT · ${$('source').value==='live' ? 'LIVE' : 'FILTERED'}` : 'ARCHIVE TOTAL';
+    $('countLabel').textContent=mode==='alerts' ? `ALERTS · ${$('source').value==='live' ? 'LIVE' : 'FILTERED'}` : 'ARCHIVE TOTAL';
     $('count').textContent=mode==='alerts' ? data.total : `${metrics.messages} contents`;
     $('failureCount').textContent=`${metrics.deliveries} deliveries · ${metrics.retained_rejections} retained failures`;
     renderFailures(failures);

@@ -592,3 +592,36 @@ behavior for the supplied and synthetic variants, not unseen transport layouts.
 Unattended physical receiver operation after installation remains a local check.
 Image publication and pull verification are tracked by the release workflow; local
 checks alone do not establish that the published `edge` tag has moved.
+
+## CAP/CMAC grouping, phone preview and map visibility (November 12, 2026)
+
+Explicit counterparts now share one inbox card and one cancellation history entry.
+CAP supplies detailed information/geometry; CMAC has an untruncated phone-style text
+panel. Original content/delivery records remain unchanged. New API regressions cover
+either arrival order, late companions, grouping before pagination, normalized time
+zones, separate status/type/source/identity, ambiguous CAP identities, unmatched
+CMAC cancellations, extra wireless cancellation text and all-clear as a new Alert.
+
+Executed locally:
+
+- Setup and full validation passed: **192 tests**, Ruff lint/format, strict mypy and
+  the reconstructed four-packet/two-message replay with no rejections.
+- The previously recovered private export yields one combined CAP/CMAC alert and
+  one cancellation history entry; all six original deliveries remain. Private XML
+  and captures are not in the repository.
+- Self-contained lifecycle browser smoke passed: late pairing while viewing the
+  online map, combined counts, both original inspectors, cancellation pairing/text,
+  literal Unicode/entity text in the phone panel, no truncation/HTML execution,
+  all-clear behavior, retained-failure download and 390-pixel mobile layout.
+- Existing alert browser checks passed for source/status filters, languages, areas,
+  standalone CMAC and heartbeat behavior. Screenshots were visually inspected.
+- Map browser smoke passed with fully opaque light synthetic street tiles. A real
+  hit test confirms the rendered polygon is above the tiles, with a normal click
+  opening its popup. Contrast, switching back offline, tile-error fallback, repeated
+  language changes, mobile, dateline/polar areas and missing-reference fallback pass.
+  Browser tests route tiles locally; they do not contact OpenStreetMap or user LAN.
+
+Grouping requires declared links; unseen/missing link conventions remain separate
+and inspectable. No archive migration, config or Compose layout change is required.
+The existing Starlette/httpx deprecation warning is unchanged. Physical receiver
+operation remains a local check; image publication/pull are verified separately.

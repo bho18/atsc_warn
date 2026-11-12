@@ -15,3 +15,11 @@
 .cancellation-info {margin-bottom:1rem}
 .diagnostic-row {padding:.8rem 0;border-bottom:1px solid #ddd;overflow-wrap:anywhere}
 .diagnostic-row a {display:inline-block;margin-right:1rem}
+.alert-card .format-label{font-size:11px;letter-spacing:.6px;color:var(--accent);margin-top:18px}
+.phone-preview{margin:20px 0 4px;padding:18px;border:1px solid #52615c;border-radius:16px;background:#26332f;box-shadow:0 3px 10px #0002;overflow-wrap:anywhere}
+.phone-preview-heading{display:flex;align-items:center;gap:9px;font-size:11px;letter-spacing:.5px;color:#bdccc5}
+.phone-icon{display:inline-block;position:relative;width:11px;height:17px;border:1.5px solid currentColor;border-radius:3px;flex-shrink:0}
+.phone-icon:after{content:'';position:absolute;bottom:2px;left:3px;right:3px;border-top:1px solid currentColor}
+.phone-preview h4,.alert-body .phone-preview h4{font-size:16px;font-weight:650;line-height:1.4;margin:12px 0 8px;color:#f1f6f3}
+.phone-preview .phone-message{font-size:14px;line-height:1.6;margin:0;color:#eef4f0;white-space:pre-wrap;overflow-wrap:anywhere}
+.message-variant{margin:18px 0}.message-variant>button{margin-top:10px}

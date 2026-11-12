@@ -244,7 +244,9 @@ def project_alert(protocol: str, fields: Tree, *, now: datetime | None = None) -
             s["value"] for s in result["segments"] if s["field"] == "CMAC_expires_date_time"
         ]
         result["expires"] = expiries
-        if result["message_type"] in ("Alert", "Update"):
+        if result["message_type"] == "Cancel":
+            result["lifecycle"] = "cancellation"
+        elif result["message_type"] in ("Alert", "Update"):
             result["lifecycle"] = timing(
                 result["status"], [(result["sent"] or "", expiry) for expiry in expiries], now
             )

@@ -98,9 +98,10 @@ def test_cmac_declared_timing_and_explicit_cap_counterpart(tmp_path):
     ingest(config, wrap(cap("cancel", "Cancel", references=REF, sent="2026-11-12T01:02:00Z")))
     with TestClient(create_app(config)) as api:
         items = api.get("/api/v1/alerts").json()["items"]
-        assert len(items) == 2
+        assert len(items) == 1
         assert all(item["alert"]["lifecycle"] == "cancelled" for item in items)
-        cmac_item = next(item for item in items if item["protocol"] == "CMAC")
+        cmac_id = next(v["message_id"] for v in items[0]["variants"] if v["protocol"] == "CMAC")
+        cmac_item = api.get(f"/api/v1/messages/{cmac_id}?source=live").json()
         assert cmac_item["alert"]["cap_message_id"]
         assert cmac_item["alert"]["cancellations"]
 

@@ -14,6 +14,7 @@ from playwright.sync_api import expect, sync_playwright
 from tests.fixtures.alert_examples import cap
 from tests.fixtures.synthetic import wrap
 from tests.integration.test_alert_inbox import ingest
+from tests.integration.test_alert_variants import companion
 from warnbridge.config import Config
 from warnbridge.storage.store import Store
 from warnbridge.transport.decoder import Decoder
@@ -74,6 +75,15 @@ with tempfile.TemporaryDirectory(prefix="warnbridge-browser-") as directory:
             page = browser.new_page(viewport={"width": 1400, "height": 1000})
             errors = []
             page.on("pageerror", lambda e: errors.append(str(e)))
+            page.route(
+                "https://tile.openstreetmap.org/**",
+                lambda r: r.fulfill(
+                    content_type="image/svg+xml",
+                    body='<svg xmlns="http://www.w3.org/2000/svg" '
+                    'width="256" height="256"><rect width="256" height="256" '
+                    'fill="#fafaf5"/></svg>',
+                ),
+            )
             page.goto("http://127.0.0.1:8097")
             cards = page.locator(".alert-card")
             expect(cards).to_have_count(3)
@@ -87,6 +97,37 @@ with tempfile.TemporaryDirectory(prefix="warnbridge-browser-") as directory:
             expect(page.locator("#alertDetail")).to_contain_text("café & météo")
             page.locator("#evidence").evaluate("(e)=>e.open=true")
             expect(page.locator("#raw")).to_contain_text("café &amp; météo")
+            page.get_by_label("Map basemap", exact=True).select_option("streets")
+            expect(page.locator(".map-status")).to_have_text("Street map · OpenStreetMap")
+            # A companion arriving after the CAP card is open must merge, not add a card.
+            wireless_text = (
+                "Wireless paired text — café &amp; météo. Stay indoors. "
+                "Keep away from windows and follow instructions from local officials. "
+                "&lt;img src=x onerror=alert(1)&gt;"
+            )
+            ingest(config, wrap(companion("original", sent=sent, text=wireless_text)))
+            page.locator("#refresh").click()
+            expect(cards).to_have_count(3)
+            expect(original_card).to_contain_text("CAP + CMAC")
+            expect(original_card).to_contain_text("2 across formats")
+            preview = original_card.get_by_role("region", name="CMAC phone preview")
+            expect(preview).to_contain_text("Wireless Emergency Alert")
+            expect(preview.locator(".phone-message")).to_have_text(
+                wireless_text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+            )
+            assert not preview.locator("img").count()
+            assert preview.locator(".phone-message").evaluate(
+                "e=>e.scrollHeight<=e.clientHeight && getComputedStyle(e).webkitLineClamp==='none'"
+            )
+            original_card.screenshot(path="/tmp/warnbridge-phone-preview.png")
+            expect(page.locator("#alertDetail .message-variants")).to_contain_text(
+                "Wireless paired text"
+            )
+            expect(page.get_by_label("Map basemap", exact=True)).to_have_value("streets")
+            expect(page.locator(".map-status")).to_have_text("Street map · OpenStreetMap")
+            page.get_by_role("button", name="Inspect original CMAC", exact=True).click()
+            expect(page.locator("#alertDetail")).to_contain_text("Wireless paired text")
+            page.get_by_role("button", name="Inspect original CAP", exact=True).click()
             cancel = (
                 cap("proper-cancel", references=reference, sent=now.isoformat(), expires=expires)
                 .replace(b"<msgType>Alert</msgType>", b"<msgType>Cancel</msgType>")
@@ -98,6 +139,17 @@ with tempfile.TemporaryDirectory(prefix="warnbridge-browser-") as directory:
             )
             cancel = cancel.replace(b"</scope>", b"</scope><note>Cancellation root note.</note>")
             ingest(config, wrap(cancel, entries=(1,), payload_type=1))
+            ingest(
+                config,
+                wrap(
+                    companion(
+                        "proper-cancel",
+                        "Cancel",
+                        sent=now.isoformat(),
+                        text="Wireless cancellation content",
+                    )
+                ),
+            )
             # Inspection stays open and refreshes its status and cancellation content.
             page.locator("#refresh").click()
             expect(original_card.locator(".lifecycle")).to_have_text("Cancelled")
@@ -106,6 +158,9 @@ with tempfile.TemporaryDirectory(prefix="warnbridge-browser-") as directory:
             )
             expect(page.locator("#alertDetail .cancellation-content")).to_contain_text(
                 "Cancellation root note."
+            )
+            expect(page.locator("#alertDetail .cancellation-content")).to_contain_text(
+                "Wireless cancellation content"
             )
             expect(cards).to_have_count(3)
             expect(page.locator("#cancellationSummary")).to_have_text("Cancellation history · 1")

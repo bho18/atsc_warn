@@ -333,6 +333,14 @@ class Store:
                 }
                 for r in self.db.execute("SELECT * FROM relationships WHERE message_id=?", (mid,))
             ]
+            if result["alert"] is not None:
+                groups = self.alert_groups(source)
+                members = next((group for group in groups if mid in group), [mid])
+                self.attach_variants(result, members, source)
+                for cancellation in result["alert"]["cancellations"]:
+                    cid = cancellation["message_id"]
+                    peers = next((group for group in groups if cid in group), [cid])
+                    self.attach_variants(cancellation, peers, source)
         else:
             result.pop("fields")
         return result
@@ -531,6 +539,134 @@ class Store:
             for key in ("lifecycle", "relationships", "cancellations"):
                 message["alert"][key] = cap[key]
 
+    def alert_groups(
+        self,
+        source: str | None,
+        status: str | None = None,
+        *,
+        cancellations: bool | None = None,
+    ) -> list[list[str]]:
+        """Group only an explicit, unique CMAC -> CAP identity within a source group.
+
+        Select identity metadata, not complete parsed trees/raw bytes, for the archive.
+        Pagination happens after grouping so companions cannot split across pages.
+        """
+        source_sql, source_params = self.source_filter(source)
+        columns = []
+        for cap_name, cmac_name in (
+            ("sender", "CMAC_sender"),
+            ("identifier", "CMAC_cap_identifier"),
+            ("sent", "CMAC_cap_sent_date_time"),
+        ):
+            columns.append(
+                f"CASE WHEN m.protocol='CAP' THEN json_extract(m.fields,'$.{cap_name}') "
+                "ELSE (SELECT CASE WHEN count(*)=1 THEN json_extract(j.value,'$.text') END "
+                "FROM json_each(m.fields,'$.tree.children') j "
+                f"WHERE json_extract(j.value,'$.tag')='{{cmac:2.0}}{cmac_name}') END AS {cap_name}"
+            )
+        rows = self.db.execute(
+            "SELECT m.id,m.protocol," + ",".join(columns) + ","
+            "CASE WHEN m.protocol='CAP' THEN json_extract(m.fields,'$.status') "
+            "WHEN json_array_length(m.fields,'$.CMAC_status')=1 "
+            "THEN json_extract(m.fields,'$.CMAC_status[0]') END AS status,"
+            "CASE WHEN m.protocol='CAP' THEN json_extract(m.fields,'$.msgType') "
+            "WHEN json_array_length(m.fields,'$.CMAC_message_type')=1 "
+            "THEN json_extract(m.fields,'$.CMAC_message_type[0]') END AS message_type,"
+            "max(o.id) AS latest,group_concat(DISTINCT s.source) AS sources "
+            "FROM messages m JOIN observations o ON o.message_id=m.id "
+            "JOIN sessions s ON s.id=o.session_id "
+            "WHERE m.classification NOT IN ('heartbeat','cmac_link_test') "
+            f"AND {source_sql} GROUP BY m.id ORDER BY latest DESC,m.id",
+            source_params,
+        ).fetchall()
+        by_id = {row["id"]: row for row in rows}
+
+        def identity(row: sqlite3.Row) -> tuple[str, str, str, str] | None:
+            scope = source
+            if scope is None:
+                sources = set(row["sources"].split(","))
+                if sources <= {"live_udp", "live_hdhomerun"}:
+                    scope = "live"
+                elif len(sources) == 1:
+                    scope = next(iter(sources))
+                else:
+                    return None
+            sent = utc_time(row["sent"] or "")
+            if not row["sender"] or not row["identifier"] or sent is None:
+                return None
+            return scope, row["sender"], row["identifier"], sent.isoformat()
+
+        caps: dict[tuple[str, str, str, str], list[str]] = {}
+        for row in rows:
+            key = identity(row)
+            if row["protocol"] == "CAP" and key:
+                caps.setdefault(key, []).append(row["id"])
+        groups: dict[str, list[str]] = {}
+        for row in rows:
+            if status is not None and (row["status"] or "Unknown") != status:
+                continue
+            if cancellations is not None and (row["message_type"] == "Cancel") != cancellations:
+                continue
+            root = row["id"]
+            key = identity(row)
+            matches = caps.get(key, []) if key else []
+            if row["protocol"] == "CMAC" and len(matches) == 1:
+                cap = by_id[matches[0]]
+                if (
+                    row["status"]
+                    and row["status"] == cap["status"]
+                    and row["message_type"]
+                    and row["message_type"] == cap["message_type"]
+                ):
+                    root = cap["id"]
+            groups.setdefault(root, []).append(row["id"])
+        # Dict insertion order follows the newest delivery of any grouped format.
+        return [
+            [root, *[mid for mid in members if mid != root]] for root, members in groups.items()
+        ]
+
+    def attach_variants(
+        self,
+        result: dict[str, Any],
+        members: list[str],
+        source: str | None,
+    ) -> None:
+        source_sql, source_params = self.source_filter(source)
+        placeholders = ",".join("?" for _ in members)
+        rows = self.db.execute(
+            "SELECT m.id,m.protocol,CASE WHEN m.protocol='CMAC' THEN m.fields ELSE '{}' END "
+            "AS fields,count(o.id) AS deliveries,max(o.received_at) AS received_at, "
+            "group_concat(DISTINCT s.source) AS sources "
+            "FROM messages m JOIN observations o ON o.message_id=m.id "
+            "JOIN sessions s ON s.id=o.session_id "
+            f"WHERE m.id IN ({placeholders}) AND {source_sql} GROUP BY m.id",
+            (*members, *source_params),
+        ).fetchall()
+        variants = []
+        for row in rows:
+            preview = None
+            if row["protocol"] == "CMAC":
+                preview = project_alert("CMAC", json.loads(row["fields"])).get("preview")
+            variants.append(
+                {
+                    "message_id": row["id"],
+                    "protocol": row["protocol"],
+                    "delivery_count": row["deliveries"],
+                    "last_received_at": row["received_at"],
+                    "text": preview,
+                    "sources": row["sources"].split(","),
+                }
+            )
+        variants.sort(key=lambda item: (item["protocol"] != "CAP", item["message_id"]))
+        result["variants"] = variants
+        result["protocols"] = sorted({v["protocol"] for v in variants})
+        result["group_sources"] = sorted({s for v in variants for s in v["sources"]})
+        result["group_delivery_count"] = sum(v["delivery_count"] for v in variants)
+        result["group_last_received_at"] = max(
+            (v["last_received_at"] for v in variants if v["last_received_at"]),
+            default=None,
+        )
+
     def alerts(
         self,
         limit: int = 50,
@@ -540,33 +676,20 @@ class Store:
         status: str | None = None,
         cancellations: bool = False,
     ) -> dict[str, Any]:
-        source_sql, source_params = self.source_filter(source)
-        where = (
-            "WHERE m.classification NOT IN ('heartbeat','cmac_link_test') "
-            "AND (CASE WHEN m.protocol='CAP' AND json_extract(m.fields,'$.msgType')='Cancel' "
-            "THEN 1 ELSE 0 END)=? "
-            "AND EXISTS (SELECT 1 FROM observations o JOIN sessions s ON s.id=o.session_id "
-            f"WHERE o.message_id=m.id AND {source_sql}) "
-            "AND (? IS NULL OR COALESCE(NULLIF(json_extract(m.fields,'$.status'),''),"
-            "CASE WHEN json_array_length(m.fields,'$.CMAC_status')=1 THEN "
-            "NULLIF(json_extract(m.fields,'$.CMAC_status[0]'),'') END,'Unknown')=?)"
-        )
-        params = (int(cancellations), *source_params, status, status)
-        total = self.db.execute(f"SELECT count(*) FROM messages m {where}", params).fetchone()[0]
-        rows = self.db.execute(
-            f"SELECT m.id FROM messages m {where} ORDER BY "
-            "(SELECT max(o.id) FROM observations o JOIN sessions s ON s.id=o.session_id "
-            f"WHERE o.message_id=m.id AND {source_sql}) DESC LIMIT ? OFFSET ?",
-            (*params, *source_params, limit, offset),
-        ).fetchall()
-        items = [self.message(row["id"], detail=False, source=source) for row in rows]
+        groups = self.alert_groups(source, status, cancellations=cancellations)
+        items = []
+        for members in groups[offset : offset + limit]:
+            item = self.message(members[0], detail=False, source=source)
+            if item is not None:
+                self.attach_variants(item, members, source)
+                items.append(item)
         return {
             "items": items,
-            "total": total,
+            "total": len(groups),
             "limit": limit,
             "offset": offset,
-            "label": "CAP and non-Link-Test CMAC; declared status, unauthenticated",
-            "lifecycle_policy": "Declared CAP timing and same-source references; unauthenticated",
+            "label": "Received alerts grouped by explicit CAP identity",
+            "lifecycle_policy": "Message timing and same-source references",
         }
 
     def record_receiver_status(

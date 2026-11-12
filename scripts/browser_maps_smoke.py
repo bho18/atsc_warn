@@ -32,8 +32,9 @@ with sync_playwright() as p:
             else:
                 # Local synthetic tile response; never contacts the real tile provider.
                 request.fulfill(
-                    path="src/warnbridge/web/vendor/leaflet/images/layers.png",
-                    content_type="image/png",
+                    body='<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256">'
+                    '<rect width="256" height="256" fill="#fafaf5"/></svg>',
+                    content_type="image/svg+xml",
                 )
         else:
             external.append(request.request.url)
@@ -74,8 +75,25 @@ with sync_playwright() as p:
     expect(page.locator(".map-status")).to_have_text("Street map · OpenStreetMap")
     assert tiles
     expect(page.locator(".leaflet-control-attribution")).to_contain_text("OpenStreetMap")
+    # An opaque light tile must not cover or wash out the actual rendered boundary.
+    widget.scroll_into_view_if_needed()
+    shape = page.locator(".alert-area-shape").first
+    expect(shape).to_have_css("stroke", "rgb(8, 115, 63)")
+    point = shape.evaluate("""path => {
+        const p=path.getPointAtLength(path.getTotalLength()*.35);
+        const screen=new DOMPoint(p.x,p.y).matrixTransform(path.getScreenCTM());
+        const hit=document.elementFromPoint(screen.x,screen.y);
+        return {x:screen.x,y:screen.y,onTop:hit===path,
+          paneZ:getComputedStyle(path.closest('.leaflet-pane')).zIndex};
+    }""")
+    assert point["onTop"] and int(point["paneZ"]) > 200, point
+    page.mouse.click(point["x"], point["y"])
+    expect(page.locator(".leaflet-popup")).to_contain_text("Polygon supplied in alert")
+    page.locator(".leaflet-popup-close-button").click()
+    widget.screenshot(path=str(Path(args.screenshot).with_stem("warnbridge-streets-visible")))
     page.get_by_label("Map basemap", exact=True).select_option("offline")
     expect(page.locator(".map-status")).to_have_text("Offline reference map · Natural Earth")
+    expect(page.locator(".alert-area-shape").first).to_have_css("stroke", "rgb(174, 229, 191)")
     tile_mode[0] = "failure"
     prior_errors = len(errors)
     # Use a new zoom level so previously decoded image tiles cannot mask failure.

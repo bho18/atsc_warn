@@ -19,12 +19,16 @@ Natural Earth vector data provides world countries, US state boundaries and sele
 city labels. It is a generalized reference map without roads, parcels or detailed
 coastlines. It is not a targeting/coverage determination or an alert-area source.
 Alert geometry is drawn independently above these reference features.
+Dedicated foreground panes keep alert boundaries above tiles and labels. A contrasting
+outline and darker green/amber strokes on street tiles keep the shapes readable;
+switching basemaps or completing tile loads reapplies their styling and ordering.
 
 **Street map (online)** explicitly loads OpenStreetMap tiles from
 `https://tile.openstreetmap.org/{z}/{x}/{y}.png`. Those requests reveal the viewed
 map region and the browser's ordinary network metadata to the tile provider. No
-alert body, identifier or receiver address is sent. This choice is per-map and
-resets to offline when another message/language is opened; selecting offline stops
+alert body, identifier or receiver address is sent. The explicit choice persists
+across inspector refreshes and other messages/languages in the current page;
+reloading the page defaults to offline. Selecting offline stops
 further tile loading. A tile failure returns to the bundled reference map while
 keeping alert geometry. No tile download, prefetch, background polling or server
 proxy is provided. Normal browser caching/referrer behavior is retained, and

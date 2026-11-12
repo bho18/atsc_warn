@@ -109,12 +109,23 @@ not create duplicate deliveries. Packet-loss/timeout fragments are never stitche
 The read-only API does not perform recovery or start capture.
 
 The alert inbox includes unknown and malformed content for inspection, excluding only
-heartbeat/Link Tests and proper CAP Cancel cards. Cancel records remain available in
+heartbeat/Link Tests and proper CAP/CMAC Cancel cards. Cancel records remain available in
 cancellation history and the diagnostic archive. Referenced alert details include
 cancellation info blocks, text, instructions and links to full original evidence.
 A new Alert containing all-clear language remains independent; text never drives
 reference lifecycle. Cancellation and identity conflict checks stay source-scoped.
 An unmatched cancellation remains in history until its target arrives.
+
+Inbox grouping uses CMAC's explicit CAP sender/identifier/sent-time linkage, comparing
+timezone-normalized timestamps and requiring matching status/type and a unique CAP
+identity. It never uses text similarity. Pairing stays within the selected source
+group; mixed live/import provenance requires a source selection. Groups are sorted
+by the newest reception of either format and paginated after grouping. CAP remains
+the representative, with CMAC wireless text rendered separately in a phone-style
+panel. The API adds variants and combined delivery metadata without changing message
+IDs, raw bytes, diagnostic content counts or individual delivery histories. Only
+identity metadata is scanned for archive-wide grouping; full trees are loaded for
+displayed records. Cancellation variants are attached to referenced-alert details.
 
 XML text previews and CLI JSONL respect XML encoding; raw downloads are unchanged.
 Undecodable content has a hexadecimal preview. Unknown encodings cannot crash ingestion.
