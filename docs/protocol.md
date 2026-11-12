@@ -99,8 +99,9 @@ Derived GeoJSON explicitly converts coordinates to lon,lat. Valid closed polygon
 and approximate 64-point spherical circle boundaries can be plotted offline.
 Unclosed/nonfinite/out-of-range shapes are reported, not repaired. Application plot
 bounds are 4–4096 vertices per polygon and 0 < circle radius <= 10,000 km; these are
-not CAP schema limits. No geocode boundary, basemap, targeting or geographic
-relevance is inferred. Schema/signature/geography validation states are unchanged.
+not CAP schema limits. Leaflet renders the geometry over a bundled Natural Earth
+reference basemap, with optional online street tiles; see maps.md. No geocode
+boundary, targeting or geographic relevance is inferred. Schema/signature/geography validation states are unchanged.
 CMAC gets a conservative original-leaf-field view, without assumed CAP mapping,
 CMAC geography or lifecycle. A current CMAC schema and real alert sample are pending.
 

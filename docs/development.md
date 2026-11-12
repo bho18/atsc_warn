@@ -16,7 +16,8 @@ Setup is idempotent; validation uses frozen offline dependencies and a disposabl
 output directory. If offline cache misses occur in a fresh environment, rerun setup
 online once. To use an existing uv installation, omit the tool-venv steps. To make
 a fresh machine fully offline, pre-provision the interpreter, uv, wheels/build
-backend and lockfile packages, or use a prebuilt local image. No online fonts/maps.
+backend and lockfile packages, or use a prebuilt local image. Essential map assets
+and reference geography are bundled; online street tiles are optional.
 
 ```sh
 .venv/bin/warnbridge --help
@@ -68,7 +69,16 @@ Build the deterministic synthetic alert TS fixture with
 disposable database containing alert-demo.ts, cap.xml (wrapped as synthetic TS),
 plus the reconstructed Link Test/heartbeat data; all alert examples use replay.
 `browser_alerts_smoke.py --url http://127.0.0.1:8087` exercises the inbox, languages,
-CMAC field review, coordinate plots, source/status filters and live heartbeat
+CMAC field review, alert maps, source/status filters and live heartbeat
 animation/freshness using mocked health replies. It also checks reduced motion,
 mobile width, no external requests and no unexpected JS dialogs/errors. Never seed
 synthetic alert content into a live source or a production archive for this test.
+
+Leaflet map assets and Natural Earth reference geometry are vendored; no Node/npm
+step is required. See maps.md for pinned versions, licenses, hashes and data rebuild
+instructions. `browser_maps_smoke.py --url http://127.0.0.1:8087` uses the same replay
+alert demo as the alert browser test. It checks local reference rendering, pan/zoom,
+fit, safe area popups, mobile resize, language cleanup, antimeridian/polar handling,
+and optional street-tile success/failure with locally mocked images. It never
+contacts a real tile provider or a receiver. Include the same-origin `/assets/`
+path when configuring your reverse proxy; no new server route/config is required.

@@ -11,9 +11,11 @@ labeled and accessible. Actual means a field value, not an authenticated warning
 
 The inspector shows CAP languages/information blocks, severity/urgency/certainty,
 instructions, description, parameters (including wireless alert text), separate
-areas/geocodes and original coordinates. An offline SVG coordinate plot displays
-supplied polygons and approximate circle boundaries, without external tiles, URL
-fetches or inferred geocode boundaries. Invalid geometry stays in the field/raw
+areas/geocodes and original coordinates. An interactive Leaflet map displays
+supplied polygons and approximate circle boundaries over a bundled offline
+reference basemap. Pan/zoom, select boundaries, or use Fit alert areas; an optional
+OpenStreetMap street layer loads only when selected. See [maps.md](maps.md) for
+sources, offline detail and tile behavior. No geocode boundary is inferred. Invalid geometry stays in the field/raw
 views and is reported as unplottable. Unknown extensions and original XML/bytes
 remain under the evidence disclosure, along with all deliveries.
 

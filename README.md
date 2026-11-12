@@ -84,9 +84,11 @@ capture; the image does not include the HDHomeRun CLI.
 - `tests`: independent golden vectors, synthetic faults/CAP, storage/API/UDP/tuner tests.
 
 CAP presentation includes multilingual information blocks, instructions, wireless
-alert parameters, separate areas, coordinate plots, expiration and conservative
+alert parameters, separate areas, interactive Leaflet maps, expiration and conservative
 same-source Update/Cancel reference projection. CMAC alerts have an experimental
 original-field review view; current CMAC schema/mappings remain unverified.
+Maps bundle an offline Natural Earth reference basemap and offer an optional
+OpenStreetMap street layer. See [alert maps](docs/maps.md).
 Schema validation, signature verification, geographic targeting and live web
 comparison are not implemented. User-supplied
 logs confirm live heartbeat/CMAC Link Test reception from an HDHR5-2US in mirrored

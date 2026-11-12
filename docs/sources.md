@@ -169,3 +169,21 @@ These independently inspected interface semantics justify a native keepalive in 
 Python adapter. Source license remains LGPL-2.1; no C implementation was copied or
 bundled. This is a four-byte video-control datagram, not a WARN heartbeat or alert.
 Its benefits for this user's WSL/VLAN return path remain a hardware-test hypothesis.
+
+## Open source map engine and reference data (November 12, 2026 UTC)
+
+Leaflet 1.9.4 was retrieved from its official npm distribution and verified against
+npm's SHA-512 integrity metadata before copying browser assets. BSD-2-Clause terms
+were inspected and retained in web/vendor/leaflet/LICENSE. Natural Earth GeoJSON
+and its public-domain license were fetched from the pinned author repository commit
+`ca96624a56bd078437bca8184e78163e5039ad19`. The bundled derivative retains only map
+reference fields and rounds reference coordinates; alert evidence is untouched.
+See maps.md and the bundled provenance manifests for exact URLs/hashes and rebuild
+instructions. These are independent public basemap data, not user captures.
+
+The current OSMF raster tile usage policy was inspected using the web tool:
+https://operations.osmfoundation.org/policies/tiles/ . Optional street tiles use
+its standard HTTPS URL, visible attribution and browser caching/referrer behavior,
+without prefetch or offline downloads. Cloud browser tests substitute local mock
+images and failures, never fetching real public tiles. Default map rendering makes
+no external requests; its reference geography is the separately licensed local data.

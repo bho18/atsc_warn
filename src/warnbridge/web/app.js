@@ -103,32 +103,8 @@ function renderAlerts(data) {
     $('alertCards').append(empty);
   }
 }
-function areaPlot(parent, areas) {
-  const shapes=[];
-  let anchor=null;
-  for (let index=0;index<areas.length;index++) for (const feature of areas[index].geometry.features) {
-    const ring=feature.geometry.coordinates[0];
-    if (anchor===null && ring.length) anchor=ring[0][0];
-    // Unwrap longitude around the first shape so dateline polygons stay local.
-    const points=ring.map(([lon,lat])=>[anchor+((lon-anchor+540)%360)-180,lat]);
-    shapes.push({points,circle:feature.properties.derived,label:`Area ${index+1}: ${areas[index].description || 'Unnamed area'}`});
-  }
-  if (!shapes.length) {parent.append(node('p','No plottable coordinates supplied. Geocodes are retained below; no boundary is inferred.','muted'));return;}
-  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
-  for (const shape of shapes) for (const [x,y] of shape.points) {minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);}
-  const width=Math.max(maxX-minX,.01),height=Math.max(maxY-minY,.01);
-  const scale=Math.min(630/width,245/height),centerX=(minX+maxX)/2,centerY=(minY+maxY)/2;
-  const x=value=>350+(value-centerX)*scale,y=value=>150-(value-centerY)*scale;
-  const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
-  svg.setAttribute('viewBox','0 0 700 310');svg.setAttribute('role','img');svg.setAttribute('aria-label','Offline plot of supplied alert coordinates, longitude horizontally and latitude vertically');
-  const add=(tag,attrs,text)=>{const n=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));if(text)n.textContent=text;svg.append(n);return n;};
-  for(let i=0;i<4;i++) {const xx=45+i*203,yy=40+i*75;add('line',{x1:xx,x2:xx,y1:25,y2:275});add('line',{x1:35,x2:665,y1:yy,y2:yy});}
-  for(const shape of shapes) {const polygon=add('polygon',{points:shape.points.map(([lon,lat])=>`${x(lon)},${y(lat)}`).join(' '),class:shape.circle ? 'circle' : 'polygon'});const title=document.createElementNS(ns,'title');title.textContent=shape.label;polygon.append(title);}
-  add('text',{x:18,y:18},`N · latitude ${minY.toFixed(3)} to ${maxY.toFixed(3)}°`);
-  add('text',{x:18,y:300},`Longitude ${minX.toFixed(3)} to ${maxX.toFixed(3)}° · east →`);
-  const figure=node('figure',null,'area-plot');figure.append(svg,node('figcaption','Offline coordinate plot, without a basemap. Green: supplied polygons. Dashed amber: approximate circle boundaries (radius in km). Axes use degrees; shape is not a distance or coverage guarantee.'));parent.append(figure);
-}
 function renderInfo(parent, info) {
+  window.WarnBridgeMap.clear();
   parent.replaceChildren();
   metadata(parent,[['Event',info.event],['Severity',info.severity],['Urgency',info.urgency],['Certainty',info.certainty],['Effective',info.effective ? stamp(info.effective) : 'Not supplied'],['Onset',info.onset ? stamp(info.onset) : 'Not supplied'],['Expires',info.expires ? stamp(info.expires) : 'Not supplied'],['Sender name',info.senderName],['Response',info.responseType.join(', ')]]);
   if(info.headline) parent.append(node('h3',info.headline));
@@ -136,7 +112,7 @@ function renderInfo(parent, info) {
   if(info.instruction) {const box=node('div',null,'instructions');box.append(node('h4','Instructions'),node('p',info.instruction,'message-text'));parent.append(box);}
   if(info.parameters.length) {parent.append(node('h4','Message parameters / wireless alert text'));const dl=node('dl',null,'field-list');for(const p of info.parameters)dl.append(node('dt',p.name || 'Unnamed parameter'),node('dd',p.value));parent.append(dl);}
   parent.append(node('h4','Affected areas'));
-  areaPlot(parent,info.areas);
+  window.WarnBridgeMap.render(parent,info.areas);
   const list=node('div',null,'area-list');
   for(const [i,area] of info.areas.entries()) {const box=node('div',null,'area');box.append(node('h4',`${i+1}. ${area.description || 'Unnamed area'}`));for(const code of area.geocodes)box.append(node('p',`${code.name || 'Geocode'}: ${code.value}`));for(const p of area.polygons)box.append(node('p',`Polygon (lat,lon): ${p}`));for(const c of area.circles)box.append(node('p',`Circle (lat,lon; radius km): ${c}`));if(area.altitude)box.append(node('p',`Altitude: ${area.altitude} ft${area.ceiling ? ` · ceiling ${area.ceiling} ft` : ''}`));for(const issue of area.geometry.issues)box.append(node('p',`Plot omitted: ${issue}`,'state-warning'));list.append(box);}
   parent.append(list);
@@ -144,6 +120,7 @@ function renderInfo(parent, info) {
   if(info.web) parent.append(node('p',`Web reference (not fetched): ${info.web}`,'muted'));
 }
 function renderAlertDetail(item) {
+  window.WarnBridgeMap.clear();
   selectedAlertState=JSON.stringify([item.alert,item.relationships,item.conflict]);
   const target=$('alertDetail');target.replaceChildren();
   if(!item.alert) {$('evidence').open=true;return;}
@@ -319,14 +296,14 @@ function changeView(next) {
 $('deliveriesTab').onclick=()=>changeView('deliveries');
 $('contentTab').onclick=()=>changeView('content');
 $('refresh').onclick=()=>refresh(true);
-for (const id of ['source','classification','alertStatus']) $(id).onchange=()=>{offset=0;selectedMessage=null;++inspectSerial;++historySerial;$('detail').hidden=true;refresh(true);};
+for (const id of ['source','classification','alertStatus']) $(id).onchange=()=>{offset=0;selectedMessage=null;++inspectSerial;++historySerial;window.WarnBridgeMap.clear();$('detail').hidden=true;refresh(true);};
 $('previous').onclick=()=>{offset=Math.max(0,offset-20);refresh(true);};
 $('next').onclick=()=>{offset+=20;refresh(true);};
 $('historyPrevious').onclick=()=>{historyOffset=Math.max(0,historyOffset-10);loadHistory().catch(e=>{$('connection').textContent=e.message;});};
 $('historyNext').onclick=()=>{historyOffset+=10;loadHistory().catch(e=>{$('connection').textContent=e.message;});};
-$('close').onclick=()=>{selectedMessage=null;++inspectSerial;++historySerial;$('detail').hidden=true;};
+$('close').onclick=()=>{selectedMessage=null;++inspectSerial;++historySerial;window.WarnBridgeMap.clear();$('detail').hidden=true;};
 function changeMode(next) {
-  mode=next;offset=0;selectedMessage=null;++inspectSerial;++historySerial;$('detail').hidden=true;
+  mode=next;offset=0;selectedMessage=null;++inspectSerial;++historySerial;window.WarnBridgeMap.clear();$('detail').hidden=true;
   $('alertsTab').setAttribute('aria-selected',String(mode==='alerts'));
   $('diagnosticsTab').setAttribute('aria-selected',String(mode==='diagnostics'));
   $('diagnosticArchive').hidden=mode!=='diagnostics';$('typeFilter').hidden=mode!=='diagnostics';

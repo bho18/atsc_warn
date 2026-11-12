@@ -31,7 +31,8 @@ def create_app(config: Config | None = None) -> FastAPI:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; script-src 'self'; style-src 'self'; "
-            "connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+            "connect-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; "
+            "object-src 'none'; frame-ancestors 'none'; base-uri 'none'"
         )
         response.headers["Cache-Control"] = "no-store"
         return response

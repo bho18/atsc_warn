@@ -15,7 +15,8 @@
 - Background RF polling/freshness states, individual delivery and grouped content
   views, source-scoped counts and paginated reception history.
 - Alert-first live inbox, live heartbeat pulse/freshness, multilingual CAP text,
-  instructions/parameters, separate areas and offline coordinate plots. Conservative
+  instructions/parameters, separate areas and interactive Leaflet maps with an
+  offline Natural Earth reference basemap and optional online street tiles. Conservative
   same-source declared CAP timing/update/cancel projection without evidence mutation.
 - Non-Link-Test CMAC original-field review and replay-only synthetic alert scenarios.
 - Locked Python dependencies, idempotent setup, offline validation, Docker and CI.
@@ -37,8 +38,9 @@ transport. See evidence.md for exact excerpt counts and provenance. The original
 - Normative header/control semantics, other OTA content types and production alerts.
 - CMAC schema-backed normalization, alert text/area semantics and lifecycle.
   References/identities/unknown fields are preserved; no speculative conversion.
-- Geographic targeting/relevance, geocode boundary lookup and basemaps. The existing
-  offline coordinate plot is a representation of supplied geometry only.
+- Geographic targeting/relevance, geocode boundary lookup and detailed offline
+  street tiles. The map displays supplied geometry over generalized reference data;
+  neither the basemap nor a matching geocode determines an alert boundary.
 - RTP, resynchronization, multicast, other tuners and ATSC 3.0.
 - Live web comparison: operator policy, completeness, rate limits, pagination,
   redirect rules and defensible mappings must be established before adding polling.

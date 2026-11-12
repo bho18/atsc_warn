@@ -1,0 +1,4 @@
+# Preserve verified upstream assets/licenses byte-for-byte, including CRLF/spacing.
+src/warnbridge/web/vendor/leaflet/** -text -whitespace
+src/warnbridge/web/maps/** -text
+src/warnbridge/web/maps/LICENSE.md -whitespace

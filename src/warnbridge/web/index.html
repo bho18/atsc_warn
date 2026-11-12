@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WarnBridge · Local receiver</title><link rel="stylesheet" href="/assets/style.css"></head>
+<title>WarnBridge · Local receiver</title><link rel="stylesheet" href="/assets/vendor/leaflet/leaflet.css"><link rel="stylesheet" href="/assets/style.css"></head>
 <body><header><div class="brand">W<span>／</span>B <b>WarnBridge</b></div><span class="pill">LOCAL MONITOR</span></header>
 <main><div class="eyebrow">PBS WARN · ATSC 1.0 · PID 0x0911</div><h1>Alerts from the air.</h1>
 <p class="intro">Read the message, its instructions, and the area it describes. An experimental local receiver.</p>
@@ -16,4 +16,6 @@
 <section id="detail" hidden><div class="section-head"><h2>Message inspector</h2><button id="close">Close</button></div><p id="detailStatus" class="muted"></p><div id="alertDetail"></div><details id="evidence"><summary>Original bytes, parsed fields & delivery history</summary><div class="inspector"><div><h3>Original XML / body</h3><pre id="raw"></pre><a id="download">Download exact bytes</a></div><div><h3>Fields & validation</h3><pre id="fields"></pre></div></div><h3>Delivery history <span class="muted">· current source filter</span></h3><div class="table-wrap"><table><thead><tr><th>Delivery</th><th>Received / processed</th><th>Source</th><th>Transport ID</th><th>Integrity</th></tr></thead><tbody id="history"></tbody></table></div><div class="pager"><button id="historyPrevious">Previous deliveries</button><span id="historyPage"></span><button id="historyNext">Next deliveries</button></div></details></section>
 <details><summary>Receiver sessions & diagnostics</summary><pre id="sessions"></pre></details>
 <footer>Offline assets · Display timezone: <span id="timezone">America/Chicago</span><br>Heartbeat indicates recent check traffic, not successful public-warning delivery. Transport integrity is not authentication.</footer></main>
+<script src="/assets/vendor/leaflet/leaflet.js" defer></script>
+<script src="/assets/map.js" defer></script>
 <script src="/assets/app.js" defer></script></body></html>

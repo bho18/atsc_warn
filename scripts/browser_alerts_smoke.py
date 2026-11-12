@@ -81,14 +81,17 @@ with sync_playwright() as p:
     expect(page.locator("#alertDetail")).to_contain_text("Preserve this unknown field.")
     page.get_by_role("button", name="DEMO ONLY — Flood warning example", exact=True).first.click()
     expect(page.locator("#alertDetail")).to_contain_text("Example instructions appear here")
-    expect(page.locator("#alertDetail svg")).to_have_count(1)
-    expect(page.locator("#alertDetail polygon")).to_have_count(2)
+    expect(page.locator("#alertDetail .alert-map")).to_have_attribute("data-ready", "true")
+    expect(page.locator("#alertDetail .alert-area-shape")).to_have_count(2)
+    expect(page.locator("#alertDetail .map-status")).to_have_text(
+        "Offline reference map · Natural Earth"
+    )
     expect(page.locator("#alertDetail")).to_contain_text("047037")
     expect(page.locator("#alertDetail")).to_contain_text("CMAMlongtext")
     page.locator("#alertLanguage").select_option("1")
     expect(page.locator("#alertDetail")).to_contain_text("Instrucciones de ejemplo")
     expect(page.locator("#alertDetail")).to_contain_text("No plottable coordinates supplied")
-    expect(page.locator("#alertDetail svg")).to_have_count(0)
+    expect(page.locator("#alertDetail .alert-map")).to_have_count(0)
     superseded[0] = True
     page.get_by_role("button", name="Refresh", exact=True).click()
     expect(page.locator("#alertDetail")).to_contain_text("Superseded by update")

@@ -72,3 +72,10 @@ Non-Link-Test CMAC is included even when its status/enum is unknown, so unrecogn
 alert content is available for review. The heartbeat indicator uses a separate
 live-only timed observation query; replay, file-import clocks and XML sent times
 cannot refresh it. All message resources stay local and inert, including web links.
+
+Alert coordinates are rendered by locally vendored Leaflet, with local Natural
+Earth GeoJSON for default reference geography. The map lifecycle is scoped to the
+active information block and disposed on close/source/language changes. Optional
+OpenStreetMap tiles are browser image requests only after explicit selection; they
+do not involve the receiver, ingestion process or a server proxy. See maps.md for
+licensing and reproducible source manifests.

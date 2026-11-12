@@ -324,3 +324,60 @@ CI were not rerun for this change; previously recorded container checks are hist
 No cloud process accessed the home LAN, tuned hardware, captured a real alert or
 published a warning. Actual OTA alert/schema/trust acceptance and current CMAC
 normalization remain pending; synthetic presentation checks do not establish them.
+
+## Leaflet alert maps — November 12, 2026 UTC
+
+Replaced the coordinate plot with Leaflet 1.9.4, locally vendored under BSD-2-Clause.
+Bundled Natural Earth reference geography is public domain, with pinned inputs,
+original license and source/output hash manifests. The default map needs no external
+requests. Optional OSM street tiles load only on selection; tile failure restores
+reference geography. Alert geometry/evidence and schema version 2 are unchanged.
+
+Executed `./scripts/setup.sh` and `./scripts/validate.sh`: **129 tests passed**, Ruff
+lint/format passed (43 Python files), strict mypy passed for 21 source files, and
+reconstructed replay remained 4 packets / 2 messages / 2 CRC passes. The existing
+upstream Starlette HTTPX test-client deprecation warning remains. No Python/Node
+runtime dependency was added; the verified browser distribution is bundled.
+
+Executed all three browser scripts against the disposable synthetic database at
+loopback 8087:
+
+```sh
+.venv/bin/python scripts/browser_maps_smoke.py --url http://127.0.0.1:8087 \
+  --screenshot /tmp/warnbridge-map.png
+.venv/bin/python scripts/browser_alerts_smoke.py --url http://127.0.0.1:8087 \
+  --screenshot /tmp/warnbridge-alerts-map.png
+.venv/bin/python scripts/browser_smoke.py --url http://127.0.0.1:8087 \
+  --check-rf --check-cap --screenshot /tmp/warnbridge-map-diagnostics.png
+```
+
+Desktop/mobile map checks passed for offline geography/labels, two supplied alert
+shapes, scale/zoom/pan, fit, safe circle details and attribution, language replacement
+and repeated cleanup, resize, antimeridian and polar geometry, and missing-reference
+asset recovery. Street-tile success and failure were simulated by local route
+responses; no real public tile requests were sent. Tile failure returns to offline
+reference; no external requests occur before explicit selection. Malicious area
+text stays literal in Leaflet popups, with no injected image or script/dialog.
+No unexpected JavaScript or CSP console errors occurred. Expected browser errors
+from intentionally aborted tile requests are filtered only in the failure case.
+
+The map test initially compared multiline rendered scale text to DOM text and was
+corrected to assert the metric scale line. A second initial failure used already
+decoded tile images, so the failure check now changes zoom before blocking new
+requests; the failed tile path and fallback are actually exercised. No application
+CSP was weakened to run tests. Scripts/connect remain same-origin; image CSP permits
+only self/data and the fixed optional OSM tile host.
+
+Built `UV_CACHE_DIR=/tmp/warnbridge-uv uv build --offline --wheel --out-dir
+/tmp/warnbridge-map-wheel`. Wheel inspection verified engine/CSS/images, map data,
+licenses and all vendored file/output hashes. An extracted-wheel replay/API test
+used the packaged code (not the editable checkout), processed seven synthetic alerts
+with seven CRC passes, kept the default live inbox empty, served map assets/licenses
+and checked strict CSP. A local screenshot contains only labeled synthetic alert
+content. The temporary native server was stopped after testing.
+
+Map rendering/packaging is verified with synthetic coordinates and local basemap
+data. Real OTA alert/CMAC geography acceptance, current CMAC mapping/schema,
+authenticity and production tile-provider availability remain unverified. No new
+hardware/network configuration, container publication or external notification was
+performed. See maps.md for dependency/data licensing and provider behavior.
