@@ -20,8 +20,8 @@ Normal updates run in that host directory:
 
 ```sh
 cd /opt/warnbridge
-docker compose pull
-docker compose up -d
+sudo docker compose pull
+sudo docker compose up -d
 ```
 
 The source publishing workflow validates each source revision before updating

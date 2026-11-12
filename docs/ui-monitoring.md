@@ -113,8 +113,8 @@ For the ThinkCentre Docker deployment, use the existing downloaded Compose direc
 
 ```sh
 cd /opt/warnbridge
-docker compose pull
-docker compose up -d
+sudo docker compose pull
+sudo docker compose up -d
 ```
 
 The config and named archive volume remain in place. Do not run Git/source setup

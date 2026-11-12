@@ -19,8 +19,9 @@ The ThinkCentre installation directory is **`/opt/warnbridge`**. Keep this layou
 ```
 
 The archive lives in Docker's named volume, mounted at `/data` inside the containers.
-It is not written directly into `/opt`. The commands below create and change ownership
-only for `/opt/warnbridge` and its config directory; do not change ownership of `/opt`.
+It is not written directly into `/opt`. The commands below use `sudo` for writes to
+the app directory and Docker access. They do not require Docker-group membership
+or transfer ownership of `/opt` or its contents to your account.
 
 The helper derives its default config path from the Compose file's directory, so
 `--compose-file /opt/warnbridge/compose.yaml` writes
@@ -34,11 +35,12 @@ Download the deployment files into the application directory:
 
 ```sh
 sudo mkdir -p /opt/warnbridge/config
-sudo chown "$(id -u):$(id -g)" /opt/warnbridge /opt/warnbridge/config
 cd /opt/warnbridge
-curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/compose.deploy.yaml -o /opt/warnbridge/compose.yaml
-curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/scripts/configure_docker.py -o /opt/warnbridge/configure_docker.py
-python3 /opt/warnbridge/configure_docker.py --compose-file /opt/warnbridge/compose.yaml
+sudo curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/compose.deploy.yaml -o /opt/warnbridge/compose.yaml
+sudo curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/scripts/configure_docker.py -o /opt/warnbridge/configure_docker.py
+if ! sudo test -f /opt/warnbridge/config/local.docker.toml; then
+  sudo python3 /opt/warnbridge/configure_docker.py --compose-file /opt/warnbridge/compose.yaml
+fi
 ```
 
 The configuration helper reads the ThinkCentre's own network settings and prints
@@ -46,15 +48,16 @@ the LAN web URL. It uses the existing receiver address `192.168.4.159` and physi
 RF channel 7, detects the host LAN address/subnet, and writes
 `config/local.docker.toml`. Reading the routing table does not query or tune the
 HDHomeRun. An existing local configuration is never overwritten. Run this helper
-once for first installation; normal image updates keep that file and do not rerun it.
+once for first installation; the conditional above skips it if the config already
+exists. Normal image updates keep that file and do not rerun the helper.
 
 Pull the image and start the two containers. Absolute Compose paths also work
 when the shell is in another directory:
 
 ```sh
-docker compose -f /opt/warnbridge/compose.yaml pull
-docker compose -f /opt/warnbridge/compose.yaml up -d
-docker compose -f /opt/warnbridge/compose.yaml ps
+sudo docker compose -f /opt/warnbridge/compose.yaml pull
+sudo docker compose -f /opt/warnbridge/compose.yaml up -d
+sudo docker compose -f /opt/warnbridge/compose.yaml ps
 ```
 
 Open the URL printed by the helper, normally `http://<ThinkCentre-LAN-IP>:8080`.
@@ -67,8 +70,8 @@ See recent reception and web logs with:
 
 ```sh
 cd /opt/warnbridge
-docker compose logs --tail=50 -f receiver
-docker compose logs --tail=50 web
+sudo docker compose -f /opt/warnbridge/compose.yaml logs --tail=50 -f receiver
+sudo docker compose -f /opt/warnbridge/compose.yaml logs --tail=50 web
 ```
 
 The published image is `ghcr.io/bho18/warnbridge:edge`. Anonymous manifest access
@@ -85,14 +88,14 @@ As new images are published during development, run:
 
 ```sh
 cd /opt/warnbridge
-docker compose pull
-docker compose up -d
-docker compose ps
+sudo docker compose -f /opt/warnbridge/compose.yaml pull
+sudo docker compose -f /opt/warnbridge/compose.yaml up -d
+sudo docker compose -f /opt/warnbridge/compose.yaml ps
 ```
 
 This downloads the new `edge` image and recreates changed containers. It preserves
-`/opt/warnbridge/config/local.docker.toml` and the named archive volume. There is no `git pull` or
-image build on the ThinkCentre. If pulling fails, the running containers continue
+`/opt/warnbridge/config/local.docker.toml` and the named archive volume. There is
+no `git pull` or image build on the ThinkCentre. If pulling fails, the running containers continue
 using their existing image; do not remove them to retry a download.
 
 Normal app updates use the same Compose file. When a release also changes the
@@ -100,22 +103,28 @@ deployment layout, refresh that file without replacing the local configuration:
 
 ```sh
 cd /opt/warnbridge
-curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/compose.deploy.yaml -o compose.yaml.new
-docker compose -f compose.yaml.new config --quiet
-cp compose.yaml compose.yaml.previous
-mv compose.yaml.new compose.yaml
-docker compose pull
-docker compose up -d
+sudo curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/compose.deploy.yaml -o /opt/warnbridge/compose.yaml.new
+sudo docker compose -f /opt/warnbridge/compose.yaml.new config --quiet
+sudo cp /opt/warnbridge/compose.yaml /opt/warnbridge/compose.yaml.previous
+sudo mv /opt/warnbridge/compose.yaml.new /opt/warnbridge/compose.yaml
+sudo docker compose -f /opt/warnbridge/compose.yaml pull
+sudo docker compose -f /opt/warnbridge/compose.yaml up -d
 ```
 
 Images also have a commit-specific `sha-<full-commit-sha>` tag. To keep a particular
-version or roll back an app image, put its exact tag in `/opt/warnbridge/.env`:
+version or roll back an app image, edit the optional root-managed image pin:
+
+```sh
+sudoedit /opt/warnbridge/.env
+```
+
+Set its exact tag:
 
 ```dotenv
 WARNBRIDGE_IMAGE=ghcr.io/bho18/warnbridge:sha-<full-commit-sha>
 ```
 
-Then run `docker compose pull` and `docker compose up -d` again. A registry digest
+Then run the `sudo docker compose` pull/up commands above again. A registry digest
 (`ghcr.io/bho18/warnbridge@sha256:<digest>`) pins the exact image bytes. Remove the
 line to follow `edge` updates again. Keep a SQLite backup before an upgrade that changes
 the database schema; changing an image tag does not reverse a database migration.
@@ -137,12 +146,12 @@ from another application. Container stop allows 60 seconds for owned cleanup.
 
 ```sh
 cd /opt/warnbridge
-docker compose stop
+sudo docker compose -f /opt/warnbridge/compose.yaml stop
 # Remove containers while retaining the archive:
-docker compose down
+sudo docker compose -f /opt/warnbridge/compose.yaml down
 ```
 
-Do not use `docker compose down -v` on this installation: `-v` deletes the archive.
+Do not use `sudo docker compose down -v` on this installation: `-v` deletes the archive.
 Keep the local config and a consistent SQLite backup when moving to another host.
 The app has no login system; keep it off public reverse-proxy routes and router
 port forwarding. Existing host network policy must allow the selected internal
@@ -154,13 +163,14 @@ For a first installation with an additional trusted client VLAN, a different
 configured host address, or different ports, use the helper before starting:
 
 ```sh
-python3 /opt/warnbridge/configure_docker.py --compose-file /opt/warnbridge/compose.yaml --allow-network 192.168.4.0/24
+sudo python3 /opt/warnbridge/configure_docker.py --compose-file /opt/warnbridge/compose.yaml --allow-network 192.168.4.0/24
 # Alternative example; use an address actually assigned to the ThinkCentre:
-python3 /opt/warnbridge/configure_docker.py --compose-file /opt/warnbridge/compose.yaml --lan-ip 192.168.1.50 --port 8082 --udp-port 5001
+sudo python3 /opt/warnbridge/configure_docker.py --compose-file /opt/warnbridge/compose.yaml --lan-ip 192.168.1.50 --port 8082 --udp-port 5001
 ```
 
 These are alternative first-run commands. For an existing installation, edit its
-local TOML, then run `docker compose up -d --force-recreate`. The helper refuses
-public/wildcard, loopback or Docker bridge addresses and will not overwrite the
+local TOML with `sudoedit /opt/warnbridge/config/local.docker.toml`, then run
+`sudo docker compose -f /opt/warnbridge/compose.yaml up -d --force-recreate`.
+The helper refuses public/wildcard, loopback or Docker bridge addresses and will not overwrite the
 local file. If DHCP changes the host's address, update the bind/return address and
 allowed subnet settings before recreating the containers.

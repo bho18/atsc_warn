@@ -529,3 +529,19 @@ API checks. Changed documentation links resolve. A real Compose config expansion
 from a different cwd confirmed that both services bind the selected Compose
 folder's config and retain the archive volume. No host LAN, real /opt directory,
 private configuration or physical tuner was accessed in cloud.
+
+
+## Privileged host installation commands
+
+Aligned the full /opt/warnbridge install/update instructions with a root-managed
+Ubuntu deployment: sudo mkdir/download/configuration, sudo Docker commands and
+sudoedit for later root-owned config/image pins. No Docker-group membership or
+ownership transfer of /opt is assumed. Existing config is kept by the first-run
+conditional. The downloaded configuration helper now prints sudo Docker commands
+for image-only deployment. Source-development output remains separate.
+
+Full validation passed: 154 tests, Ruff lint/format, strict mypy and the unchanged
+4-packet / 2-message / 2-CRC reconstructed replay, including integration API checks.
+The production shell examples passed bash syntax checking. No sudo command, host
+filesystem modification or hardware operation was executed against the ThinkCentre
+from cloud; these are the commands for the user to run locally.

@@ -116,8 +116,8 @@ def test_downloaded_install_prints_image_pull_commands(tmp_path, monkeypatch, ca
     setup.main()
     output = capsys.readouterr().out
     assert "http://192.168.1.50:8080" in output
-    assert "docker compose -f compose.yaml pull" in output
-    assert "docker compose -f compose.yaml up -d" in output
+    assert "sudo docker compose -f compose.yaml pull" in output
+    assert "sudo docker compose -f compose.yaml up -d" in output
     assert "--build" not in output
 
 

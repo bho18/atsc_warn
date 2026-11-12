@@ -13,22 +13,26 @@ state remain excluded from Git.
 ## ThinkCentre Docker deployment (internal network)
 
 For a fresh installation on `homeserver`, download two small deployment files;
-Docker pulls the app image. No Git checkout or local build is required:
+Docker pulls the app image. The commands use `sudo` for writes under `/opt` and
+Docker access, without requiring Docker-group membership or changing directory
+ownership. No Git checkout or local build is required:
 
 ```sh
 sudo mkdir -p /opt/warnbridge/config
-sudo chown "$(id -u):$(id -g)" /opt/warnbridge /opt/warnbridge/config
 cd /opt/warnbridge
-curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/compose.deploy.yaml -o /opt/warnbridge/compose.yaml
-curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/scripts/configure_docker.py -o /opt/warnbridge/configure_docker.py
-python3 /opt/warnbridge/configure_docker.py --compose-file /opt/warnbridge/compose.yaml
-docker compose pull
-docker compose up -d
+sudo curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/compose.deploy.yaml -o /opt/warnbridge/compose.yaml
+sudo curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/scripts/configure_docker.py -o /opt/warnbridge/configure_docker.py
+if ! sudo test -f /opt/warnbridge/config/local.docker.toml; then
+  sudo python3 /opt/warnbridge/configure_docker.py --compose-file /opt/warnbridge/compose.yaml
+fi
+sudo docker compose -f /opt/warnbridge/compose.yaml pull
+sudo docker compose -f /opt/warnbridge/compose.yaml up -d
 ```
 
 Compose and configuration files live under `/opt/warnbridge`; archived messages
-stay in Docker's named volume. The helper detects the ThinkCentre's LAN address/subnet
-and prints the web URL. The UI binds that private address and enforces the internal client allowlist.
+stay in Docker's named volume. An existing local configuration is kept. The helper
+detects the ThinkCentre's LAN address/subnet and prints the web URL. The UI binds
+that private address and enforces the internal client allowlist.
 Receiver and web containers share a persistent archive; raw stream recording is off.
 The public deployment image is `ghcr.io/bho18/warnbridge:edge`; no registry login is needed.
 
@@ -36,8 +40,8 @@ For each published update:
 
 ```sh
 cd /opt/warnbridge
-docker compose pull
-docker compose up -d
+sudo docker compose -f /opt/warnbridge/compose.yaml pull
+sudo docker compose -f /opt/warnbridge/compose.yaml up -d
 ```
 
 [The Docker runbook](docs/docker-live.md) covers status/logs, registry access,

@@ -159,15 +159,18 @@ def main():
     print(f"Wrote {output}: web http://{address}:{args.port}, trusted subnet {subnet}.")
     print("Receiver and web share a persistent Docker volume. Raw recording is off.")
     print("Review the config, then run the read-only preflight:")
+    docker_command = (
+        "docker compose" if args.compose_file == "compose.live.yaml" else "sudo docker compose"
+    )
     print(
-        f"docker compose -f {args.compose_file} run --rm --no-deps receiver "
+        f"{docker_command} -f {args.compose_file} run --rm --no-deps receiver "
         "discover --config /app/config/live.toml"
     )
     if args.compose_file == "compose.live.yaml":
         print("Start: docker compose -f compose.live.yaml up -d --build")
     else:
-        print(f"Download image: docker compose -f {args.compose_file} pull")
-        print(f"Start: docker compose -f {args.compose_file} up -d")
+        print(f"Download image: {docker_command} -f {args.compose_file} pull")
+        print(f"Start: {docker_command} -f {args.compose_file} up -d")
 
 
 if __name__ == "__main__":
