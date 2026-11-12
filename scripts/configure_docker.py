@@ -120,6 +120,11 @@ def main():
     parser.add_argument("--udp-port", type=int, default=5000)
     parser.add_argument("--tuner", type=int, help="omit for safe idle-tuner selection")
     parser.add_argument("--output", type=Path, default=Path("config/local.docker.toml"))
+    parser.add_argument(
+        "--compose-file",
+        default="compose.live.yaml",
+        help="Compose file used in printed commands; use compose.yaml for downloaded deployments",
+    )
     args = parser.parse_args()
     try:
         ipaddress.IPv4Address(args.receiver)
@@ -144,10 +149,14 @@ def main():
     print("Receiver and web share a persistent Docker volume. Raw recording is off.")
     print("Review the config, then run the read-only preflight:")
     print(
-        "docker compose -f compose.live.yaml run --rm --no-deps receiver "
+        f"docker compose -f {args.compose_file} run --rm --no-deps receiver "
         "discover --config /app/config/live.toml"
     )
-    print("Start: docker compose -f compose.live.yaml up -d --build")
+    if args.compose_file == "compose.live.yaml":
+        print("Start: docker compose -f compose.live.yaml up -d --build")
+    else:
+        print(f"Download image: docker compose -f {args.compose_file} pull")
+        print(f"Start: docker compose -f {args.compose_file} up -d")
 
 
 if __name__ == "__main__":

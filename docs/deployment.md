@@ -115,16 +115,16 @@ next exclusive DB writer marks previously running sessions abandoned.
 ## Persistent data and Docker
 
 For the ThinkCentre's live receiver and LAN-only UI use [docker-live.md](docker-live.md).
-It installs the native CLI in the image, detects LAN settings locally, separates
-receiver/web processes and persists their shared archive. The instructions below
+It downloads a published image without a Git checkout/local build, detects LAN
+settings locally, separates receiver/web processes and persists their shared archive. The instructions below
 also describe the original separate replay demonstration.
 
 
 Default `docker compose up --build -d` uses a named volume, non-root UID 10001,
 read-only root filesystem, no capabilities, loopback-only port 8080 and rotated
 10 MiB × 3 container logs. A missing DB gets only the local synthetic replay demo.
-Restart keeps existing data and does not repeat the demo. Images are built locally,
-not published. Stop with `docker compose down` (no `-v`, which would remove data).
+Restart keeps existing data and does not repeat the demo. This replay example
+builds locally; `compose.deploy.yaml` instead pulls the published GHCR image. Stop with `docker compose down` (no `-v`, which would remove data).
 
 The image now includes Debian's hdhomerun-config. `compose.live.yaml` provides
 native HDHomeRun live reception on Linux host networking and an independently

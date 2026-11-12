@@ -13,8 +13,10 @@ from the cloud. Native discovery and automatic idle-tuner selection are allowed;
 require explicit --host when multiple devices exist. Use owned-lock operations.
 Process live TS in memory; raw journals are opt-in. Preserve WARN message evidence.
 
-The user permits a public repository and normal source delivery. No publication
-of images/packages/private captures without separate authorization. Do not copy
+The user permits a public repository and normal source delivery. The user also
+authorizes WarnBridge container image publication to GHCR for pull-based installation
+and iterative image updates. Other package publication and private captures still
+require separate authorization. Do not copy
 historical PBS source without verified licensing. No credentials in source or logs.
 
 Read docs/protocol.md, docs/evidence.md, docs/architecture.md and docs/deployment.md.

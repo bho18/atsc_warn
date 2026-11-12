@@ -98,3 +98,24 @@ def test_read_ip_only_invokes_local_iproute_json(monkeypatch):
     monkeypatch.setattr(setup.subprocess, "run", run)
     assert setup.read_ip("address", "show") == INTERFACES
     assert commands == [["ip", "-j", "-4", "address", "show"]]
+
+
+def test_downloaded_install_prints_image_pull_commands(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(setup, "detect_network", lambda *args: ("192.168.1.50", "192.168.1.0/24"))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "configure_docker.py",
+            "--output",
+            str(tmp_path / "live.toml"),
+            "--compose-file",
+            "compose.yaml",
+        ],
+    )
+    setup.main()
+    output = capsys.readouterr().out
+    assert "http://192.168.1.50:8080" in output
+    assert "docker compose -f compose.yaml pull" in output
+    assert "docker compose -f compose.yaml up -d" in output
+    assert "--build" not in output

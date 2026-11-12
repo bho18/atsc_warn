@@ -15,4 +15,5 @@ jobs:
       - run: ./scripts/validate.sh
       - run: docker compose config --quiet
       - run: docker compose -f compose.live.yaml config --quiet
+      - run: docker compose -f compose.deploy.yaml config --quiet
       # No hardware, live endpoint polling, image publication or deployment.

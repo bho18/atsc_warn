@@ -34,21 +34,34 @@ path; the listener prints the chosen return IP and warns when no TS arrives.
 
 ## ThinkCentre Docker deployment (internal network)
 
-On the Ubuntu `homeserver`, update this branch and run:
+For a fresh installation on `homeserver`, download two small deployment files;
+Docker pulls the app image. No Git checkout or local build is required:
 
 ```sh
-python3 scripts/configure_docker.py
-docker compose -f compose.live.yaml build
-docker compose -f compose.live.yaml run --rm --no-deps receiver discover --config /app/config/live.toml
-docker compose -f compose.live.yaml up -d
+mkdir -p ~/warnbridge/config
+cd ~/warnbridge
+curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/compose.deploy.yaml -o compose.yaml
+curl -fL https://raw.githubusercontent.com/bho18/atsc_warn/codex/warnbridge-initial/scripts/configure_docker.py -o configure_docker.py
+python3 configure_docker.py --compose-file compose.yaml
+docker compose pull
+docker compose up -d
 ```
 
-The local script detects the host LAN address/subnet from its routing table and
-prints the web URL. The stack includes native HDHomeRun control, live reception,
-a persistent archive and separate web/receiver containers. The UI binds only that
-LAN address and enforces a client subnet allowlist. No public port publishing,
-Caddy changes or raw transport recording. See [the live Docker runbook](docs/docker-live.md)
-for startup checks, other trusted VLANs, logs, data migration and updates.
+The helper detects the ThinkCentre's LAN address/subnet and prints the web URL.
+The UI binds that private address and enforces the internal client allowlist.
+Receiver and web containers share a persistent archive; raw stream recording is off.
+The deployment image is `ghcr.io/bho18/warnbridge:edge`.
+
+For each published update:
+
+```sh
+cd ~/warnbridge
+docker compose pull
+docker compose up -d
+```
+
+[The Docker runbook](docs/docker-live.md) covers status/logs, registry access,
+version pinning/rollback, other trusted VLANs and persistent data.
 
 ## Quick offline demonstration
 

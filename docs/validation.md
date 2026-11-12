@@ -440,3 +440,24 @@ and acceptance. Host address detection is mock-tested; the real address is read
 when the user runs setup on homeserver, never inferred from the laptop's old IP.
 The application has no login system; keep public reverse proxies/port forwarding
 away from this internal stack. See docker-live.md for limits, migration and updates.
+
+## Pull-based installation and image publishing
+
+Added compose.deploy.yaml with a GHCR image reference and no build context, plus a
+configuration-helper option for a downloaded compose.yaml. The fresh-install path
+uses an empty directory, two downloaded files and Docker image pulls; no source
+checkout, venv or local build is required. Updates preserve config/data and use
+pull/up. Source-build compose.live.yaml remains available for development.
+
+Executed the full frozen offline validation: **152 tests passed**, Ruff lint/format
+passed (48 Python files), mypy passed (21 source files), and reconstructed replay
+still yielded 4 packets / 2 messages / 2 CRC passes. The added regression verifies
+the fresh-install helper prints image pull/start commands and the detected LAN URL,
+without a build step. All three Compose configurations validate.
+
+The publishing workflow gates Linux AMD64 image publication on those checks, uses
+repository-scoped package-write permissions, pins actions, tags source revisions,
+reuses existing SHA-tagged digests on reruns and promotes the current source head
+to edge. Registry publication, first-package visibility and pull verification are
+recorded after executing the workflow; a configured workflow alone is not a claim
+that an image exists or is anonymously accessible.

@@ -1,0 +1,51 @@
+# Deployment from published images; no source checkout/build required.
+name: warnbridge-live
+
+x-common: &common
+  image: ${WARNBRIDGE_IMAGE:-ghcr.io/bho18/warnbridge:edge}
+  platform: linux/amd64
+  init: true
+  network_mode: host
+  volumes:
+    - warnbridge-data:/data
+    - type: bind
+      source: ${WARNBRIDGE_LIVE_CONFIG:-./config/local.docker.toml}
+      target: /app/config/live.toml
+      read_only: true
+      bind:
+        create_host_path: false
+  restart: unless-stopped
+  stop_grace_period: 60s
+  read_only: true
+  tmpfs:
+    - /tmp:size=16m
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  web:
+    <<: *common
+    command: [serve, --config, /app/config/live.toml]
+    healthcheck:
+      test: [CMD, python, /app/scripts/container-health.py, /app/config/live.toml]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+  receiver:
+    <<: *common
+    command: [listen, --config, /app/config/live.toml]
+    healthcheck:
+      test: [CMD, python, /app/scripts/container-health.py, /app/config/live.toml, --receiver]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+volumes:
+  warnbridge-data:
