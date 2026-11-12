@@ -6,7 +6,8 @@
   loss, adaptation, duplicate and resource-bound tests.
 - File/stdin imports, deterministic TS/journal replay, raw UDP ingestion; explicit
   rejection of RTP/unsupported datagram framing, arrival metadata and raw retention.
-- HDHomeRun direct-IP owned locks, idle recheck, keyed operations/cleanup, default PID
+- Native HDHomeRun discovery, direct IP, tuner inventory and auto idle leases,
+  live JSONL output, raw journaling off by default, owned locks and default PID
   filter and explicit full-multiplex diagnostic option, with mocked race tests.
 - Immutable observation evidence, exact XML-content deduplication, identity conflict
   flags, CAP references/out-of-order resolution and conservative expiration display.

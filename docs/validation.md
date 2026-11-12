@@ -133,3 +133,36 @@ Final container and native test-server logs contained no errors/tracebacks.
 A subsequent documentation-only commit records these results. The final bundle
 includes that commit and the unchanged validated implementation. No remote push,
 PR, live endpoint polling, physical receiver test, or original-capture test occurred.
+
+## Live receiver workflow follow-up — November 11, 2026 (America/Chicago)
+
+The user approved public source delivery and requested native discovery/direct IP,
+automatic idle tuner selection, physical channel selection, and live decoding without
+continuous transport recording. The initial public-repository blocker recorded
+above is superseded by that authorization.
+
+Implemented `discover` and `listen` CLI workflows; `capture` remains an alias.
+Native CLI discovery, bounded local HTTP device metadata, tuner inventory, busy/raced
+tuner fallback, explicit selection, return-IP routing/override, immediate JSONL
+message output and a no-UDP warning are covered by mock/loopback tests. Raw arrival
+journals are now opt-in; non-WARN packets are discarded and do not enter the DB.
+
+Executed `./scripts/validate.sh`: **87 tests passed**, Ruff lint/format passed, mypy
+passed for 18 source files, and the original reconstructed replay still produced
+4 packets / 2 complete messages / 2 CRC passes. One upstream Starlette HTTPX
+test-client deprecation warning remains. No new runtime dependencies were added.
+
+The live integration test emulates native tuner control, pushes mixed non-WARN and
+WARN packets over a real loopback UDP socket, verifies immediate decoded output,
+checks the selected channel/PID filter and release, and proves only the 188-byte
+WARN packet was retained with no raw journal directory. Another subprocess test
+verifies actual SIGTERM shutdown. Separate tests cover opt-in journals, direct IP
+without broadcast, native discovery duplicates/ambiguity, metadata limits/redirect
+refusal, busy/lock acquisition races, current channel inspection, config overrides,
+and a persisted actionable WSL no-data warning.
+
+Physical HDHomeRun discovery/control/firmware behavior and actual WSL networking
+remain unverified: the cloud has not contacted the user's LAN. No schema, signature
+or real-capture acceptance claim has changed. See live-receiver.md for the exact
+local commands. Manufacturer HTTP API documentation re-fetch was blocked by proxy
+CONNECT 403; the adapter's metadata contract is tested with mocks only.

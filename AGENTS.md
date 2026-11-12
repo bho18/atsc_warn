@@ -9,9 +9,12 @@ transport and XML times. CRC is integrity, never authentication. Missing schema/
 configuration is not successful validation. Never turn replay/System/Test traffic
 into operational public warnings. No public-warning, siren, IPAWS origination or
 outbound upload behavior. Never force-clear a tuner lock or contact the user's LAN
-from the cloud. Use only explicit device/tuner selection and owned-lock operations.
+from the cloud. Native discovery and automatic idle-tuner selection are allowed;
+require explicit --host when multiple devices exist. Use owned-lock operations.
+Process live TS in memory; raw journals are opt-in. Preserve WARN message evidence.
 
-Keep this repository private. No publication of images/packages/captures. Do not copy
+The user permits a public repository and normal source delivery. No publication
+of images/packages/private captures without separate authorization. Do not copy
 historical PBS source without verified licensing. No credentials in source or logs.
 
 Read docs/protocol.md, docs/evidence.md, docs/architecture.md and docs/deployment.md.

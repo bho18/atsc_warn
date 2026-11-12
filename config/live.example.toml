@@ -1,0 +1,17 @@
+# Copy to config/local.toml, then run: warnbridge listen --config config/local.toml
+# Omit receiver_host to use native broadcast discovery (exactly one device required).
+# Omit tuner to automatically acquire the first idle tuner on that device.
+# receiver_host = "192.168.4.159" # historical example; use your current address
+# tuner = 0                      # optional explicit selection
+channel = "auto:7"               # EXAMPLE: physical RF channel, not virtual channel
+# return_ip = "192.0.2.20"       # optional override: address reachable from receiver
+udp_bind = "0.0.0.0"
+udp_port = 5000
+record_raw = false
+full_multiplex = false
+no_data_warning = 45.0
+
+database = "data/warnbridge.db"
+bind = "127.0.0.1"
+port = 8080
+timezone = "America/Chicago"

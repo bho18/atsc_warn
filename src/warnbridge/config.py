@@ -17,10 +17,12 @@ class Config:
     receiver_host: str | None = None
     tuner: int | None = None
     channel: str | None = None
-    udp_bind: str = "127.0.0.1"
+    udp_bind: str = "0.0.0.0"
     return_ip: str | None = None
     udp_port: int = 5000
     full_multiplex: bool = False
+    record_raw: bool = False
+    no_data_warning: float = 45.0
     capture_dir: str = "data/captures"
     capture_segment_bytes: int = 8 * 1024 * 1024
     capture_segments: int = 8
@@ -34,13 +36,15 @@ class Config:
             raise ValueError("invalid PID")
         if not 1 <= self.port <= 65535 or not 1 <= self.udp_port <= 65535:
             raise ValueError("invalid port")
-        if self.tuner is not None and self.tuner not in (0, 1):
-            raise ValueError("CONNECT DUO tuner must be 0 or 1")
+        if self.tuner is not None and not 0 <= self.tuner < 32:
+            raise ValueError("tuner must be between 0 and 31")
         if self.receiver_host:
             IPv4Address(self.receiver_host)
         IPv4Address(self.udp_bind)
         if self.return_ip:
             IPv4Address(self.return_ip)
+        if self.no_data_warning <= 0:
+            raise ValueError("no_data_warning must be positive")
         if min(self.capture_segments, self.max_rejected) < 1:
             raise ValueError("retention limits must be positive")
         if self.capture_segment_bytes < 131072 or self.max_database_bytes < 1048576:

@@ -44,7 +44,13 @@ no session certificate is copied into the image. Documentation sites were blocke
 implementation never bypassed network restrictions.
 
 `doctor` without `--receiver` does not create a DB or contact a device. Explicit
-`--receiver` only reads status/target/lock, requiring configured host+tuner. Capture
-additionally requires channel+return_ip. Syntax/IO/config failures exit 2; strict
+`--receiver` only reads status/target/lock, requiring configured host+tuner. Listen/capture
+requires a channel and selects a device/idle tuner when omitted; return_ip defaults
+to the local route and can be overridden for WSL/VLAN setups. Syntax/IO/config failures exit 2; strict
 import containing rejected data exits 1 after preserving diagnostics; success is 0.
 Ctrl-C file processing exits 130. SIGINT/SIGTERM live capture requests orderly stop.
+
+For native discovery/direct-IP operation use `warnbridge discover` and
+`warnbridge listen`; see [live-receiver.md](live-receiver.md). Live stdout is JSONL,
+including a final typed summary; offline decode/replay retain their summary format.
+Raw arrival files are opt-in with --record-raw.

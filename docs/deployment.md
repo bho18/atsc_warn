@@ -6,38 +6,24 @@ No cloud process contacted the historical receiver IP.
 
 ## Get the local delivery onto homeserver
 
-The selected remote `https://github.com/bho18/atsc_warn.git` is currently **public**.
-The implementation was not pushed. First obtain the supplied `warnbridge-initial.bundle`
-file from this chat's workspace and put it in `~/Downloads` on homeserver (private
-file transfer). These commands work without a provisioned remote review branch:
+The user has authorized this repository to be public. Clone the delivered review
+branch (or use a supplied source bundle when remote access is unavailable):
 
 ```sh
-git clone ~/Downloads/warnbridge-initial.bundle ~/warnbridge
+git clone --branch codex/warnbridge-initial https://github.com/bho18/atsc_warn.git ~/warnbridge
 cd ~/warnbridge
 python3.12 -m venv ~/.local/share/warnbridge-tools
 ~/.local/share/warnbridge-tools/bin/pip install uv==0.13.5
 export PATH="$HOME/.local/share/warnbridge-tools/bin:$PATH"
 ./scripts/setup.sh
 ./scripts/validate.sh
-.venv/bin/warnbridge replay tests/fixtures/reconstructed.ts --config config/demo.toml
-.venv/bin/warnbridge serve --config config/demo.toml
 ```
 
-Ubuntu must already provide Python 3.12 and venv support; package setup is a host
-administration step if missing. uv installation/dependency setup needs Internet
-once; receive/replay/serve thereafter is local. The bundled source has no actual
-captures, DBs, credentials or historical third-party implementation code.
-
-Future remote workflow, **only after** the owner changes the repository to Private
-and the local review branch is actually pushed:
-
-```sh
-git clone --branch codex/warnbridge-initial https://github.com/bho18/atsc_warn.git ~/warnbridge
-```
-
-That branch is not currently available remotely. The empty remote also needs a
-chosen initial/default-branch setup before a meaningful first PR can be created.
-No new remote repository is necessary or authorized by this implementation.
+For live reception follow [live-receiver.md](live-receiver.md), including WSL network
+requirements. It uses native discovery or direct IP, reads tuner availability/current
+channels, leases an idle tuner, applies the WARN PID filter and outputs JSONL while
+processing UDP in memory. Raw journaling is off by default. The native Linux CLI
+package on Ubuntu is `hdhomerun-config`. No receiver is contacted by setup/validation.
 
 ## Original-capture acceptance, before touching tuners
 
@@ -94,14 +80,15 @@ cp config/homeserver.example.toml config/local.toml
 ```
 
 The adapter rechecks before and after atomic lock acquisition to protect against
-races; the preflight is not a reservation. Every subsequent write and release is
+races; the preflight is not a reservation. Auto-selection may skip a busy or raced
+candidate and try the next idle tuner; an explicit --tuner choice is never changed. Every subsequent write and release is
 keyed. It refuses configured channels even if the stream target is none. It uses
 a WARN-only PID filter unless full_multiplex=true was explicitly configured.
-Do not silently choose another tuner after refusal.
+A non-busy startup/network error stops reception instead of trying another tuner.
 
 After capture, inspect the selected tuner's status/target/lock again. Expect the
 owned target/channel stopped and lock released. Confirm Jellyfin still works.
-Review session counters, timing journal, heartbeat/link-test observations and raw
+Review live JSONL, session counters, heartbeat/link-test observations and WARN
 bytes. Lack of native CAP/public alerts is not a capture failure by itself; a
 heartbeat alone is not public-warning end-to-end validation.
 
@@ -159,7 +146,7 @@ the app itself has no authentication and no browser tuner-control endpoint.
 
 ## Retention and backups
 
-Default journals: eight segments × 8 MiB, JSONL with actual bytes base64 encoded,
+Raw journals are disabled by default. Opt-in --record-raw journals: eight segments × 8 MiB, JSONL with actual bytes base64 encoded,
 UTC/monotonic timestamps, sequence and UDP peer. Old segments are deleted; copy
 interesting private evidence before rotation. Replay is deterministic in order,
 without artificial wall-clock delays, and always labeled replay. Missing/rotated

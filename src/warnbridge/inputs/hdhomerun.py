@@ -1,7 +1,7 @@
 """Conservative direct-IP CLI adapter using SiliconDust keyed control writes.
 
 See docs/sources.md for inspected upstream ref and lock semantics. No force unlock,
-automatic discovery, takeover, or blind reconnect. No shell commands.
+takeover or blind reconnect. No shell commands.
 """
 
 import secrets
@@ -18,6 +18,10 @@ class TunerError(RuntimeError):
     def __init__(self, message: str, *, uncertain: bool = False) -> None:
         super().__init__(message)
         self.uncertain = uncertain
+
+
+class TunerBusy(TunerError):
+    pass
 
 
 def run_command(args: list[str]) -> str:
@@ -59,8 +63,12 @@ class Tuner:
         return {name: self.command("get", name) for name in ("status", "target", "lockkey")}
 
     @staticmethod
+    def status_fields(status: str) -> dict[str, str]:
+        return dict(part.split("=", 1) for part in status.split() if "=" in part)
+
+    @staticmethod
     def idle(snapshot: dict[str, str], *, require_unlocked: bool) -> bool:
-        status = dict(part.split("=", 1) for part in snapshot["status"].split() if "=" in part)
+        status = Tuner.status_fields(snapshot["status"])
         return (
             snapshot["target"] == "none"
             and status.get("ch") == "none"
@@ -70,7 +78,7 @@ class Tuner:
     def __enter__(self) -> "Tuner":
         self.config.require_receiver()
         if not self.idle(self.inspect(), require_unlocked=True):
-            raise TunerError("tuner busy, foreign-owned, or idle state not established")
+            raise TunerBusy("tuner busy, foreign-owned, or idle state not established")
         # Device atomically refuses this unkeyed acquisition if a competing owner won.
         try:
             self.command("set", "lockkey", self.key)
@@ -79,11 +87,13 @@ class Tuner:
                 # The device may have accepted the key before the reply was lost.
                 # Release only that key, never touch target/channel or force unlock.
                 self.command("set", "lockkey", "none", keyed=True)
+            elif not self.idle(self.inspect(), require_unlocked=True):
+                raise TunerBusy("tuner claimed by another client during lock acquisition") from None
             raise
         self.owned = True
         try:
             if not self.idle(self.inspect(), require_unlocked=False):
-                raise TunerError("tuner became busy during acquisition")
+                raise TunerBusy("tuner became busy during acquisition")
             self.tuned = True  # include ambiguous response/timeouts in cleanup
             self.command("set", "channel", str(self.config.channel), keyed=True)
             self.command(

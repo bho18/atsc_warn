@@ -92,3 +92,21 @@ default branch main (no commits). This conflicts with the requested privacy.
 Work is local only; no push/PR/public release. Repository owner must change Settings
 → General → Danger Zone → Change repository visibility → Private before remote
 delivery. GitHub CLI metadata was blocked; connector metadata supplied the check.
+
+## Live connectivity follow-up (November 11, 2026 America/Chicago)
+
+The user explicitly approved a public repository, superseding the initial privacy
+blocker above. Credentials, private captures and runtime state are still excluded.
+
+Inspected pinned SiliconDust `hdhomerun_config.c` lines 72–165: native `discover`
+prints `hdhomerun device <8 hex ID> found at <address>` and uses native discovery
+across interfaces. WarnBridge delegates this command instead of using a cloud
+directory. IPv4 duplicates are coalesced by device ID.
+
+The local HDHomeRun HTTP `/discover.json` interface supplies DeviceID, ModelNumber
+and TunerCount. Reference: https://info.hdhomerun.com/info/http_api . The live adapter
+accepts only these safe metadata fields, bounds reads and does not follow device URLs
+or redirects. That manufacturer web documentation remains inaccessible under this
+cloud network policy; physical device/firmware response shape is unverified here.
+HTTP metadata behavior is tested with local mocks; explicit tuner/IP control remains
+available when metadata is unavailable. No device authentication field is stored.

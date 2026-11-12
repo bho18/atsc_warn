@@ -7,10 +7,30 @@ an Internet service. **CRC integrity is not authenticity. This is not a certifie
 alerting product and sends no public warnings or operational notifications.**
 
 The selected repository is `atsc_warn`; the application/package is `warnbridge`.
-**Remote delivery is blocked by privacy:** GitHub reports the selected repository
-is public. All work stays local until its owner makes it private. No remote repo,
-push, PR, release or published image is claimed. A local Git bundle accompanies
-this delivery; see deployment.md for installation without a remote push.
+Public source delivery is authorized. Private captures, credentials and runtime
+state remain excluded from Git.
+
+## Live HDHomeRun reception
+
+Install SiliconDust's `hdhomerun_config` in your Linux/WSL instance, then:
+
+```sh
+.venv/bin/warnbridge discover
+.venv/bin/warnbridge discover --host 192.168.4.159
+.venv/bin/warnbridge listen --host 192.168.4.159 --channel 7
+```
+
+The IP/RF channel are historical examples: use your device and station. Omit --host
+for native auto-discovery of exactly one receiver. Omit --tuner to acquire the first
+idle tuner safely; add --tuner 0 for explicit selection. Output is live JSONL;
+SQLite stores decoded WARN evidence. **Raw transport recording is off by default.**
+Routine capture filters PID 0x0911 on the receiver and discards unrelated packets.
+Use --record-raw only for deliberate diagnostics.
+
+See [the live receiver guide](docs/live-receiver.md) for channel/return-IP settings,
+logging, optional raw diagnostics, and WSL UDP routing. Discovery can fail across
+VLANs/WSL NAT; --host bypasses broadcast. WSL must also have a working UDP return
+path; the listener prints the chosen return IP and warns when no TS arrives.
 
 ## Quick offline demonstration
 

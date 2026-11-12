@@ -34,7 +34,9 @@ Content and protocol identities are distinct. Rejections are bounded independent
 retain the newest 1000. Accepted evidence is not automatically deleted. At a 512 MiB
 database-plus-WAL threshold ingestion stops for archival; in-flight cleanup can
 overshoot by a bounded pending batch. SQLite page reuse can leave file size at its
-high-water mark. Raw journals keep eight 8 MiB segments (base64 overhead included).
+high-water mark. Optional raw journals keep eight 8 MiB segments (base64 overhead included).
+Live input discards unrelated packets and creates no raw journal by default; only
+WARN packet/message evidence enters SQLite. Message JSONL is flushed during reception.
 Disk-full failures can prevent final diagnostics; no software can promise durable
 writes after filesystem failure.
 
@@ -48,3 +50,7 @@ No telemetry exporter, URL retrieval from XML, public-warning publisher, siren
 control, IPAWS origination, or online polling exists. Saved web JSON imports are
 size-limited (2 MiB), retained separately (100 latest), labeled not comparable, and
 do not create OTA messages or affect RF health.
+
+Native discovery, device metadata, automatic idle tuner leases and WSL return routing
+are documented in [live-receiver.md](live-receiver.md). HTTP serving still starts no
+receiver; tuner operations remain CLI-only.

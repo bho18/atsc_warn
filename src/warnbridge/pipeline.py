@@ -1,6 +1,9 @@
+import base64
 import fcntl
-from collections.abc import Iterable
+import time
+from collections.abc import Callable, Iterable
 from pathlib import Path
+from typing import Any
 
 from warnbridge.config import Config
 from warnbridge.formats.xml import parse_body
@@ -10,8 +13,16 @@ from warnbridge.transport.decoder import Decoder, Event
 
 
 class Ingestor:
-    def __init__(self, config: Config, source: str, identity: str) -> None:
+    def __init__(
+        self,
+        config: Config,
+        source: str,
+        identity: str,
+        emit: Callable[[dict[str, Any]], None] | None = None,
+    ) -> None:
         self.config = config
+        self.emit = emit
+        self.last_checkpoint = 0.0
         Path(config.database).parent.mkdir(parents=True, exist_ok=True)
         self.writer_lock = open(str(Path(config.database).resolve()) + ".ingest.lock", "ab")
         try:
@@ -54,7 +65,39 @@ class Ingestor:
                 self.decoder.count_xml(parsed.xml)
             if parsed.xml_state == "invalid":
                 counts["xml_failures"] += 1
-        self.store.record(self.sid, event, parsed, self.index)
+        mid = self.store.record(self.sid, event, parsed, self.index)
+        if self.emit is not None:
+            count = (
+                self.store.db.execute(
+                    "SELECT count(*) FROM observations WHERE message_id=?", (mid,)
+                ).fetchone()[0]
+                if mid is not None
+                else 0
+            )
+            self.emit(
+                {
+                    "type": event.kind,
+                    "session_id": self.sid,
+                    "message_id": mid,
+                    "source": self.source,
+                    "received_at": event.received_at,
+                    "transport_id": event.transport_id,
+                    "reason": event.reason,
+                    "classification": parsed.classification if parsed else None,
+                    "validation": {
+                        "transport": "valid" if event.kind == "message" else "invalid",
+                        "xml": parsed.xml_state if parsed else "not_checked",
+                        "schema": "not_configured",
+                        "signature": "not_checked",
+                    },
+                    "duplicate": count > 1,
+                    "body_base64": base64.b64encode(event.body).decode("ascii"),
+                    "xml": parsed.xml.decode("utf-8", errors="replace")
+                    if parsed and parsed.xml is not None
+                    else None,
+                    "fields": parsed.fields if parsed else {},
+                }
+            )
 
     def process(self, chunks: Iterable[Chunk], journal: Journal | None = None) -> dict[str, int]:
         state = "finished"
@@ -95,7 +138,9 @@ class Ingestor:
                     monotonic_ns=chunk.monotonic_ns,
                 ):
                     self.record(event)
-                self.store.finish_session(self.sid, dict(self.decoder.counts), "running")
+                if time.monotonic() - self.last_checkpoint >= 1:
+                    self.store.finish_session(self.sid, dict(self.decoder.counts), "running")
+                    self.last_checkpoint = time.monotonic()
                 if self.decoder.failed:
                     state = "failed"
                     break
