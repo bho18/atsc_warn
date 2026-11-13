@@ -5,7 +5,7 @@ No PSI pointer byte, heuristic XML repair, or guessed resynchronization.
 """
 
 import struct
-from collections import Counter, OrderedDict
+from collections import Counter, OrderedDict, deque
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from hashlib import sha256
@@ -75,6 +75,9 @@ class Decoder:
         self.offset = 0
         self.cc: int | None = None
         self.previous: bytes | None = None
+        # One conventional seven-packet UDP batch may be repeated. Keep a bounded
+        # byte-exact history, not a content/transport-ID deduplication cache.
+        self.recent_packets: deque[bytes] = deque(maxlen=7)
         self.failed = False
         self.xml_seen: OrderedDict[str, None] = OrderedDict()
 
@@ -113,6 +116,7 @@ class Decoder:
             self.buffer.clear()
         self.cc = None
         self.previous = None
+        self.recent_packets.clear()
 
     def feed(
         self,
@@ -154,6 +158,7 @@ class Decoder:
         if p[1] & 0x80 or p[3] & 0xC0 or afc == 0:
             yield from self._drop("invalid_ts_header")
             self.cc, self.previous = None, None
+            self.recent_packets.clear()
             yield self._reject("tei_scrambling_or_reserved_afc", p, [offset])
             return
         start = 4
@@ -165,6 +170,7 @@ class Decoder:
                 yield from self._drop("invalid_adaptation")
                 self.cc = None
                 self.previous = None
+                self.recent_packets.clear()
                 yield self._reject("invalid_adaptation_length", p, [offset])
                 return
             discontinuity = bool(length and p[5] & 0x80)
@@ -178,13 +184,23 @@ class Decoder:
             self.counts["discontinuities"] += 1
             yield from self._drop("explicit_discontinuity")
             self.cc = None
+            self.recent_packets.clear()
         gap = self.cc is not None and cc != ((self.cc + int(payload)) & 15)
+        # A repeated batch can revisit earlier CCs, not just the last packet.
+        # Ignore only exact recent payload packets arriving off the expected CC.
+        # An expected-CC packet must advance normally, including after CC wrap.
+        # Do not move the continuity baseline or extend the history on a repeat.
+        if gap and payload and p in self.recent_packets:
+            self.counts["duplicate_ts_packets"] += 1
+            return
         if gap:
             self.counts["continuity_gaps"] += 1
             yield from self._drop("continuity_gap")
+            self.recent_packets.clear()
         self.cc, self.previous = cc, p
         if not payload:
             return
+        self.recent_packets.append(p)
         content = p[start:]
         if len(content) < 8:
             yield from self._drop("short_fragment_header")

@@ -8,8 +8,15 @@ PBS C–1 or ATIS conformance. See evidence.md and request.md for the exact vect
 Strict 188-byte MPEG-TS: sync 47, PID selection, TEI/scrambling rejection,
 PUSI, adaptation control/length, continuity and adaptation discontinuity handling.
 Payload-bearing CC increments modulo 16; adaptation-only CC does not increment.
-Exact consecutive identical packets are transport duplicates. They do not create
-deliveries. Payload CC loss or invalid headers discard all pending WARN assemblies.
+Exact consecutive identical packets are transport duplicates. Repeated batches are
+also recognized when an off-sequence payload packet exactly matches one of the last
+seven selected payload packets (one conventional UDP batch). These repeats do not
+advance continuity, extend the history, or create deliveries. Expected-CC packets
+still advance normally, including CC wrap; changed bytes are never suppressed.
+History is cleared at input loss, invalid TS headers/adaptation, explicit
+discontinuity or a genuine continuity gap. The seven-packet window is an application
+bound, not a claim that arbitrarily delayed/reordered packets are safe to join.
+Payload CC loss or invalid headers discard all pending WARN assemblies.
 A new clean start may follow a loss. No fragments are joined across a known loss.
 Strict sync failure stops parsing; no guessed resynchronization is implemented.
 Arbitrary file/stdin read boundaries are supported; truncated tails are retained

@@ -717,3 +717,21 @@ its unlocked-tuner acquisition fix and both validation histories. The combined
 source passed 201 offline tests, Ruff lint/format, strict mypy, reconstructed
 replay/API coverage, and all three Compose configuration checks. Publication and
 registry pull verification are performed through the existing container workflow.
+
+
+## Repeated-packet batch correction (November 12, 2026, America/Chicago)
+
+- `./scripts/validate.sh`: **212 tests passed**, Ruff lint/format passed, mypy
+  passed (22 source files), and the independent fixture replay retained its two
+  messages/two CRC passes/zero failures. The existing Starlette/httpx deprecation
+  warning remains.
+- Synthetic regressions cover repeated prefixes, suffixes and complete batches,
+  null padding, CC wrap, changed payload bytes, missing packets, history bounds,
+  and history clearing across loss/discontinuity/input boundaries. The duplicate
+  cache is seven selected payload packets, uses full byte equality, and never
+  advances continuity for ignored repeats.
+- Existing loss rejection, body framing, CRC checks, archive records and tuner
+  ownership behavior remain. No schema migration or config regeneration is needed.
+  Historical rejection records/counters are retained; the correction applies to
+  new ingestion. Cloud tests do not contact hardware; live post-update acceptance
+  remains pending. Private diagnostic data is excluded from this release.

@@ -58,6 +58,75 @@ def test_exact_ts_repeat_not_delivery():
     assert d.counts["duplicate_ts_packets"] == 1
 
 
+@pytest.mark.parametrize("begin,end", [(0, 2), (1, 3), (0, 3)])
+def test_repeated_packet_batches_do_not_break_or_duplicate_messages(begin, end):
+    raw = cmac()  # CC 14, 15, 0 also exercises wrap inside the repeated batch.
+    prefix, batch, suffix = raw[: begin * 188], raw[begin * 188 : end * 188], raw[end * 188 :]
+    # Null padding may separate selected packets in a seven-slot UDP datagram.
+    padding = b"\x47\x1f\xff\x10" + b"\xff" * 184
+    d, events = decode(prefix + batch + padding + batch + suffix + heartbeat())
+    assert [e.kind for e in events] == ["message", "message"]
+    assert events[0].raw_ts == raw
+    assert d.counts["crc_pass"] == 2
+    assert d.counts["duplicate_ts_packets"] == end - begin
+    assert d.counts["continuity_gaps"] == 0
+    assert d.counts["rejected_packets"] == d.counts["rejected_messages"] == 0
+
+
+def test_changed_packet_is_not_a_batch_duplicate():
+    raw = cmac()
+    changed = bytearray(raw[:188])
+    changed[40] ^= 1
+    d, events = decode(raw[:376] + bytes(changed) + raw[376:] + heartbeat())
+    assert d.counts["continuity_gaps"] > 0
+    assert d.counts["duplicate_ts_packets"] == 0
+    assert [e.body for e in events if e.kind == "message"] == [HEART_BODY]
+
+
+def test_batch_duplicates_do_not_mask_a_missing_next_packet():
+    raw = cmac()
+    # Repeating an earlier start cannot substitute for missing fragment 2.
+    d, events = decode(raw[:376] + raw[:188] + heartbeat())
+    assert d.counts["duplicate_ts_packets"] == 1
+    assert d.counts["continuity_gaps"] == 1
+    assert any(e.reason == "continuity_gap" for e in events)
+    assert [e.body for e in events if e.kind == "message"] == [HEART_BODY]
+
+
+def test_expected_cc_after_wrap_is_a_new_delivery():
+    raw = b"".join(heartbeat(cc) for cc in range(16)) + heartbeat(0)
+    d, events = decode(raw)
+    assert len(events) == 17
+    assert all(e.kind == "message" for e in events)
+    assert d.counts["duplicate_ts_packets"] == d.counts["continuity_gaps"] == 0
+
+
+@pytest.mark.parametrize("boundary", ["input", "gap", "invalid", "discontinuity"])
+def test_duplicate_history_cannot_cross_loss_boundaries(boundary):
+    raw = cmac()
+    d = Decoder()
+    list(d.feed(raw))
+    if boundary == "input":
+        list(d.break_stream("test_loss"))
+    elif boundary == "gap":
+        list(d.feed(heartbeat(7)))
+    elif boundary == "invalid":
+        bad = bytearray(heartbeat())
+        bad[1] |= 0x80
+        list(d.feed(bytes(bad)))
+    else:
+        list(d.feed(b"\x47\x09\x11\x29\xb7\x80" + b"\xff" * 182))
+    events = list(d.feed(raw[188:]))
+    assert [e.reason for e in events] == ["orphan_fragment", "orphan_fragment"]
+
+
+def test_duplicate_history_is_bounded():
+    d, events = decode(b"".join(heartbeat(cc) for cc in range(8)) + heartbeat(0))
+    assert len(events) == 9
+    assert d.counts["duplicate_ts_packets"] == 0
+    assert d.counts["continuity_gaps"] == 1
+
+
 def test_missing_fragment_and_truncation():
     raw = cmac()
     d, events = decode(raw[:188] + raw[376:] + b"\x47")

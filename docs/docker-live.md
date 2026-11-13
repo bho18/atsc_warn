@@ -210,3 +210,12 @@ Refresh the UI after both services restart. The normal archive volume is retaine
 Do not roll an old schema-2 image back onto a migrated schema-3 archive; use a
 consistent pre-update backup for that rollback. Backup files live in the same volume
 until copied elsewhere; they are not a backup against loss of that volume.
+
+## Repeated-packet batch correction
+
+A receiver update recognizes exact repeated packet batches that previously caused
+false continuity_gap and orphan_fragment records or duplicate deliveries. Install
+with the normal pull/up commands above. No Compose/config change or database
+migration is required. Existing retained failures and session counters stay as
+historical evidence; compare new records and the new receiver session after the
+update. Real sequence loss, changed bytes and CRC failures remain rejected.
