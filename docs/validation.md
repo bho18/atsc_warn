@@ -694,3 +694,26 @@ histories. The integrated revision passes all 201 offline tests, Ruff lint/forma
 strict mypy, reconstructed replay and all three Compose configuration checks.
 Publication and registry pull verification follow through the existing gated
 container workflow; these local checks alone do not establish publication.
+
+## Single heartbeat pulse (November 12, 2026)
+
+Replaced the expand/retract/expand keyframes with one outward, fading ring over
+one second. The live observation trigger and reduced-motion behavior are unchanged.
+
+- Setup and `./scripts/validate.sh` passed: 192 tests, Ruff lint/format, strict
+  mypy, and reconstructed replay (four packets, two CRC-valid messages, no rejections).
+  The existing Starlette/httpx deprecation warning remains.
+- A focused Chromium check against a temporary local replay/API server sampled
+  the rendered ring through completion: scale increased continuously and opacity
+  decreased to zero. Repeating an observation did not restart it; a new observation
+  did. Reduced-motion preference suppressed animation.
+- The existing broad `browser_alerts_smoke.py` stopped before its heartbeat checks:
+  the current alert-demo fixture produced six cards where it expects seven. This
+  unrelated fixture/count mismatch remains unresolved; the focused check above passed.
+- No hardware reception, deployment or image publication was performed.
+
+For the requested image build, rebased the pulse change onto e184c79, retaining
+its unlocked-tuner acquisition fix and both validation histories. The combined
+source passed 201 offline tests, Ruff lint/format, strict mypy, reconstructed
+replay/API coverage, and all three Compose configuration checks. Publication and
+registry pull verification are performed through the existing container workflow.
