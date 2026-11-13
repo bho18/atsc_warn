@@ -54,7 +54,7 @@ control, IPAWS origination, or online polling exists. Saved web JSON imports are
 size-limited (2 MiB), retained separately (100 latest), labeled not comparable, and
 do not create OTA messages or affect RF health.
 
-Native discovery, device metadata, automatic idle tuner leases and WSL return routing
+Native discovery, device metadata, automatic unlocked tuner leases and WSL return routing
 are documented in [live-receiver.md](live-receiver.md). HTTP serving still starts no
 receiver; tuner operations remain CLI-only.
 

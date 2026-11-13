@@ -59,7 +59,8 @@ For a deliberate source/native installation, install SiliconDust's `hdhomerun_co
 
 The IP/RF channel are historical examples: use your device and station. Omit --host
 for native auto-discovery of exactly one receiver. Omit --tuner to acquire the first
-idle tuner safely; add --tuner 0 for explicit selection. Output is live JSONL;
+unlocked tuner; add --tuner 0 for explicit selection. Existing channel/target settings
+are replaced only after acquiring ownership. Output is live JSONL;
 SQLite stores decoded WARN evidence. **Raw transport recording is off by default.**
 Routine capture filters PID 0x0911 on the receiver and discards unrelated packets.
 Use --record-raw only for deliberate diagnostics.

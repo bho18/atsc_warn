@@ -49,7 +49,7 @@ def parser() -> argparse.ArgumentParser:
         cmd = commands.add_parser(
             name,
             help={
-                "listen": "discover/connect, lease an idle tuner and output live message JSONL",
+                "listen": "discover/connect, lease an unlocked tuner and output live message JSONL",
                 "capture": "alias for listen (raw recording is off by default)",
                 "discover": "read-only native discovery or direct-IP tuner inspection",
             }.get(name),
@@ -61,7 +61,7 @@ def parser() -> argparse.ArgumentParser:
                 "--tuner",
                 type=tuner_argument,
                 default=argparse.SUPPRESS,
-                help="tuner index or 'auto'; auto leases the first idle tuner",
+                help="tuner index or 'auto'; auto leases the first unlocked tuner",
             )
         if name in ("decode", "replay"):
             cmd.add_argument("input", help="TS file, or '-' for stdin (arrival times unknown)")

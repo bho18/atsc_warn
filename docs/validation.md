@@ -625,3 +625,72 @@ Grouping requires declared links; unseen/missing link conventions remain separat
 and inspectable. No archive migration, config or Compose layout change is required.
 The existing Starlette/httpx deprecation warning is unchanged. Physical receiver
 operation remains a local check; image publication/pull are verified separately.
+
+## Network interruption and reconnection review (November 12, 2026)
+
+Reviewed source revision a82c208 and a user-supplied homeserver log excerpt.
+The excerpt contains eight complete accepted message records, ending at
+2026-11-12T19:53:11.056551Z (1:53:11 PM America/Chicago), followed by one no-UDP
+warning, one generic control failure, eight EADDRNOTAVAIL errors and 21 all-tuners-
+busy errors. Error lines have no timestamps. The installed image revision, current
+local addresses and current device state were not independently verified. The raw
+private excerpt is not copied into the repository.
+
+An ad hoc offline experiment using the existing mocked Device/Duo fixtures confirmed
+that a failed first cleanup write leaves channel, target and lock occupied, while
+Tuner.close() sets owned=false. Retrying close then performs no operations, and a
+new Tuner refuses that occupied device. Two simulated interrupted sessions can
+strand both mock tuners and make subsequent automatic selection report all busy.
+Cleanup failure also replaces the original socket exception at the CLI reporting
+boundary. These experiments demonstrate software failure paths, not proof of the
+physical tuners' ownership or firmware lock-expiration behavior in this incident.
+
+Source inspection confirms that UDP silence only warns, RF polling only reports,
+and the live process has no in-place recovery loop. Compose restarts exited
+processes but does not restart a running receiver merely because it is unhealthy.
+Proposed work is ownership-preserving recovery with network readiness checks,
+bounded backoff, a silence watchdog, durable private lease recovery across process
+restarts, and separate primary/cleanup error reporting. No runtime fix or deployment
+was made during this review.
+
+Setup and full offline validation passed: 154 tests including replay-to-API
+integration, Ruff lint/format, strict mypy, and reconstructed replay with four
+packets, two messages and two CRC passes. The existing Starlette HTTPX deprecation
+warning remains. No LAN connection or hardware capture was attempted; physical
+network-flap, device-reboot and competing-client acceptance checks remain pending.
+
+## Unlocked configured tuners are available (November 12, 2026 America/Chicago)
+
+The follow-up user snapshot established that both tuners had RF lock and no
+ownership lock, while retaining channels and targets. The server's current local
+address matched its configured bind/return address. This narrows the observed
+startup blocker to configured state, not a remaining ownership lock. The user
+explicitly clarified that absence of an ownership lock should permit access.
+
+Acquisition now accepts a confirmed lockkey=none regardless of channel or target.
+It atomically acquires a fresh lock, stops the previous target using that key,
+then sets channel, filter and destination. Competing locks and unconfirmed lock
+states remain unavailable; every write after acquisition, including cleanup, stays
+keyed. Discovery labels unlocked tuners available, and CLI help/current guides and
+standing instructions reflect this policy. Automatic selection still chooses the
+first available index; an explicit tuner selection remains fixed.
+
+Full offline validation passed: 163 tests, Ruff lint/format, strict mypy and the
+four-packet/two-message/two-CRC reconstructed replay, including replay/API checks.
+Regression coverage includes configured unlocked tuners in automatic and explicit
+selection, foreign locks, acquisition races, foreign takeover after acquisition,
+and uncertain acquisition that releases only its candidate key while preserving
+the previous channel/target. The existing Starlette HTTPX warning remains.
+
+This fixes startup/restart admission for unlocked configured tuners. In-process
+reconnection, a silence watchdog and durable lease recovery are not implemented
+by this change. No physical hardware was contacted and no image was published or
+deployed during this change; firmware/network recovery acceptance remains local.
+
+For the subsequent authorized image publication, rebased this change onto
+ff55cf9, preserving the newer decoder/recovery/lifecycle and CAP/CMAC grouping
+updates. Resolved only an appended validation-log conflict by retaining both
+histories. The integrated revision passes all 201 offline tests, Ruff lint/format,
+strict mypy, reconstructed replay and all three Compose configuration checks.
+Publication and registry pull verification follow through the existing gated
+container workflow; these local checks alone do not establish publication.

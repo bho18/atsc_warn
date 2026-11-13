@@ -132,10 +132,29 @@ def test_tuner_inventory_reads_channel_and_never_mutates():
     duo = Duo()
     duo.tuners[0].lock = "jellyfin"
     duo.tuners[0].channel = "auto:9"
+    duo.tuners[1].channel = "auto:7"
+    duo.tuners[1].target = "udp://192.0.2.50:5000"
     states = inspect_device(DEVICE, duo)
-    assert [s["availability"] for s in states] == ["busy", "idle"]
+    assert [s["availability"] for s in states] == ["busy", "available"]
     assert states[0]["channel"] == "auto:9"
     assert all("set" not in args for args in duo.calls)
+
+
+@pytest.mark.parametrize("selected", [None, 1])
+def test_unlocked_configured_tuners_allow_auto_and_explicit_selection(monkeypatch, selected):
+    monkeypatch.setattr(discovery, "select_device", lambda _: DEVICE)
+    duo = Duo()
+    for tuner in duo.tuners:
+        tuner.channel = "auto:7"
+        tuner.target = "udp://192.0.2.50:5000"
+    chosen = 0 if selected is None else selected
+    cfg = Config(tuner=selected, channel="auto:7", return_ip="192.0.2.20")
+    with open_receiver(cfg, duo) as active:
+        assert active.config.tuner == chosen
+        assert duo.tuners[chosen].target == "udp://192.0.2.20:5000"
+        assert duo.tuners[1 - chosen].target == "udp://192.0.2.50:5000"
+        assert not duo.tuners[1 - chosen].calls
+    assert duo.tuners[chosen].lock is None
 
 
 @pytest.mark.parametrize("race", [False, True])

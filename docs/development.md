@@ -46,7 +46,7 @@ are recorded in sources.md. No network restrictions were bypassed.
 
 `doctor` without `--receiver` does not create a DB or contact a device. Explicit
 `--receiver` only reads status/target/lock, requiring configured host+tuner. Listen/capture
-requires a channel and selects a device/idle tuner when omitted; return_ip defaults
+requires a channel and selects a device/unlocked tuner when omitted; return_ip defaults
 to the local route and can be overridden for WSL/VLAN setups. Syntax/IO/config failures exit 2; strict
 import containing rejected data exits 1 after preserving diagnostics; success is 0.
 Ctrl-C file processing exits 130. SIGINT/SIGTERM live capture requests orderly stop.

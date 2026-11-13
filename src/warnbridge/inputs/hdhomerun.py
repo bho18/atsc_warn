@@ -1,7 +1,7 @@
 """Conservative direct-IP CLI adapter using SiliconDust keyed control writes.
 
-See docs/sources.md for inspected upstream ref and lock semantics. No force unlock,
-takeover or blind reconnect. No shell commands.
+See docs/sources.md for inspected upstream ref and lock semantics. Unlocked tuners
+are available even when configured. No force unlock or shell commands.
 """
 
 import secrets
@@ -69,18 +69,13 @@ class Tuner:
         return dict(part.split("=", 1) for part in status.split() if "=" in part)
 
     @staticmethod
-    def idle(snapshot: dict[str, str], *, require_unlocked: bool) -> bool:
-        status = Tuner.status_fields(snapshot["status"])
-        return (
-            snapshot["target"] == "none"
-            and status.get("ch") == "none"
-            and (not require_unlocked or snapshot["lockkey"] == "none")
-        )
+    def unlocked(snapshot: dict[str, str]) -> bool:
+        return snapshot.get("lockkey") == "none"
 
     def __enter__(self) -> "Tuner":
         self.config.require_receiver()
-        if not self.idle(self.inspect(), require_unlocked=True):
-            raise TunerBusy("tuner busy, foreign-owned, or idle state not established")
+        if not self.unlocked(self.inspect()):
+            raise TunerBusy("tuner busy: ownership lock present or unlocked state not established")
         # Device atomically refuses this unkeyed acquisition if a competing owner won.
         try:
             self.command("set", "lockkey", self.key)
@@ -89,13 +84,16 @@ class Tuner:
                 # The device may have accepted the key before the reply was lost.
                 # Release only that key, never touch target/channel or force unlock.
                 self.command("set", "lockkey", "none", keyed=True)
-            elif not self.idle(self.inspect(), require_unlocked=True):
+            elif not self.unlocked(self.inspect()):
                 raise TunerBusy("tuner claimed by another client during lock acquisition") from None
             raise
         self.owned = True
         try:
-            if not self.idle(self.inspect(), require_unlocked=False):
-                raise TunerBusy("tuner became busy during acquisition")
+            # The successful atomic acquisition, not an owner-IP read, establishes
+            # ownership. All subsequent writes carry that key. Stop any old target
+            # before retuning so the new stream cannot go to its former destination.
+            self.streaming = True  # include ambiguous response/timeouts in cleanup
+            self.command("set", "target", "none", keyed=True)
             self.tuned = True  # include ambiguous response/timeouts in cleanup
             self.command("set", "channel", str(self.config.channel), keyed=True)
             self.command(
@@ -104,7 +102,6 @@ class Tuner:
                 "0x0000-0x1fff" if self.config.full_multiplex else f"0x{self.config.pid:04x}",
                 keyed=True,
             )
-            self.streaming = True
             self.command(
                 "set", "target", f"udp://{self.config.return_ip}:{self.config.udp_port}", keyed=True
             )

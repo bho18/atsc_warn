@@ -25,7 +25,8 @@ broadcast protocol). Local `/discover.json` metadata supplies the device ID, mod
 and tuner count; unknown fields, DeviceAuth and device-supplied URLs are ignored.
 Metadata reads have a five-second timeout, 64 KiB bound and no redirect following.
 The CLI lists each tuner's current RF channel, signal status, stream target and
-lock owner, with idle/busy/unknown availability. These commands only read state.
+lock owner, with available/busy/unknown availability. Available means lockkey=none,
+even if a channel or target is configured. These commands only read state.
 
 IPv4 is supported. Duplicate native results for a device ID are coalesced. When
 multiple devices are discovered, `listen` requires --host instead of picking a
@@ -36,10 +37,10 @@ count. Direct-IP metadata/control do not depend on broadcast reaching the device
 ## Listen, choose a channel, and output messages
 
 ```sh
-# Discover exactly one device; choose and acquire its first idle tuner:
+# Discover exactly one device; choose and acquire its first unlocked tuner:
 .venv/bin/warnbridge listen --channel 7
 
-# Direct IP, automatic idle tuner selection:
+# Direct IP, automatic unlocked tuner selection:
 .venv/bin/warnbridge listen --host 192.168.4.159 --channel 7
 
 # Explicit tuner and return path:
@@ -51,15 +52,18 @@ Replace the TEST-NET return address with the receiving machine's address that th
 HDHomeRun can reach. --channel 7 means **physical RF 7** and becomes auto:7. For
 WNPT this is the historical known setting, not a universal station default. Current
 channels are visible in `discover`; this workflow does not run a station scan or
-retune an occupied tuner. Channel changes require stopping the owned listener and
-starting it with the new --channel value. `capture` remains an alias for `listen`.
+retune a locked tuner belonging to another client. Channel changes require stopping
+the owned listener and starting it with the new --channel value. `capture` remains
+an alias for `listen`.
 
-Automatic selection only skips busy/foreign-owned tuners or a lost acquisition
-race. Each candidate is rechecked under its owned lock before any tuning; a filter,
+Automatic selection skips locked tuners, unconfirmed lock states, or a lost acquisition
+race. A confirmed lockkey=none permits acquisition regardless of the channel/target.
+The device atomically grants ownership before WarnBridge stops the old target and
+sets its channel, filter and target. Every subsequent write is keyed; a filter,
 control or network failure stops the operation instead of blindly switching tuners.
-Explicit --tuner never silently switches to another tuner. All tuners busy produces
-an error with no takeover. A non-none channel is conservatively treated as busy,
-even when target/lock appear empty. Jellyfin ownership is never force-cleared.
+Explicit --tuner never silently switches to another tuner. If no tuner is unlocked,
+selection fails. Jellyfin ownership is never force-cleared. Clients leaving a tuner
+unlocked do not reserve it, even if they configured a stream.
 
 The owned live adapter also sends the native four-byte lock-key keepalive from the
 bound receiving socket to the receiver's UDP port 5004, immediately on entering the

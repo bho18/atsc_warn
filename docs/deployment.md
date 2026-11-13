@@ -52,7 +52,7 @@ export PATH="$HOME/.local/share/warnbridge-tools/bin:$PATH"
 
 For native live reception follow [live-receiver.md](live-receiver.md), with
 WSL-specific network notes when applicable. It uses native discovery or direct IP, reads tuner availability/current
-channels, leases an idle tuner, applies the WARN PID filter and outputs JSONL while
+channels, leases an unlocked tuner, applies the WARN PID filter and outputs JSONL while
 processing UDP in memory. Raw journaling is off by default. The native Linux CLI
 package on Ubuntu is `hdhomerun-config`. No receiver is contacted by setup/validation.
 
@@ -97,24 +97,26 @@ hdhomerun_config 192.168.4.159 get /tuner1/target
 hdhomerun_config 192.168.4.159 get /tuner1/lockkey
 ```
 
-Continue only when one chosen tuner reports channel none, target none, lock none,
-and Jellyfin is not using/reserving it. If busy or uncertain, stop and retry later;
-never force-clear the lock. Prior idle status is irrelevant.
+A tuner reporting lock none is available, including when channel and target remain
+configured. WarnBridge acquires ownership before replacing that configuration.
+If locked or ownership is uncertain, retry later; never force-clear the lock.
+A read-only snapshot is not a reservation.
 
 ```sh
 cp config/homeserver.example.toml config/local.toml
-# Edit config/local.toml: current host, explicitly selected idle tuner, channel,
+# Edit config/local.toml: current host, explicitly selected unlocked tuner, channel,
 # and return_ip = homeserver's IPv4 routable from the receiver VLAN.
 .venv/bin/warnbridge doctor --config config/local.toml --receiver
-# Only after reviewing the idle snapshot:
+# After reviewing the ownership snapshot:
 .venv/bin/warnbridge capture --config config/local.toml --duration 60
 ```
 
-The adapter rechecks before and after atomic lock acquisition to protect against
-races; the preflight is not a reservation. Auto-selection may skip a busy or raced
-candidate and try the next idle tuner; an explicit --tuner choice is never changed. Every subsequent write and release is
-keyed. It refuses configured channels even if the stream target is none. It uses
-a WARN-only PID filter unless full_multiplex=true was explicitly configured.
+The device's atomic lock acquisition protects against competing owners;
+the preflight is not a reservation. Auto-selection may skip a locked or raced
+candidate and try the next unlocked tuner; an explicit --tuner choice is never
+changed. Every subsequent write and release is keyed. After acquisition it stops
+the previous target before setting channel, filter and the new target. It uses a
+WARN-only PID filter unless full_multiplex=true was explicitly configured.
 A non-busy startup/network error stops reception instead of trying another tuner.
 
 After capture, inspect the selected tuner's status/target/lock again. Expect the
@@ -138,7 +140,7 @@ no force/unkeyed cleanup or stale restoration follows. Tests mock these outcomes
 firmware behavior still requires the opt-in local check.
 
 The receiver process performs no in-place automatic reconnect or takeover. Docker
-may restart an exited process, repeating its normal idle/owned-lock checks; an
+may restart an exited process, repeating its normal unlocked/owned-lock checks; an
 unhealthy running container is not automatically retuned. After control-network
 failure, cleanup may be impossible; it is reported as an error. SIGKILL/power loss cannot guarantee cleanup.
 The next capture must repeat inspection and refuse a remaining/foreign lock. Have

@@ -62,7 +62,9 @@ sudo docker compose -f /opt/warnbridge/compose.yaml ps
 
 Open the URL printed by the helper, normally `http://<ThinkCentre-LAN-IP>:8080`.
 The image includes WarnBridge and `hdhomerun_config`; Docker downloads those together.
-The `receiver` container safely selects an idle tuner and processes the WARN stream.
+The `receiver` container selects an unlocked tuner and processes the WARN stream.
+An unlocked tuner is available even with a configured channel or stream target;
+WarnBridge acquires ownership before replacing those settings.
 The `web` container serves the archive and receiver indicators. No full transport
 stream recording is enabled.
 
@@ -141,7 +143,7 @@ firewall rules, and does not modify Caddy or Jellyfin.
 The archive is the named volume belonging to project `warnbridge-live`, shared by
 both containers at `/data`. It starts empty on a fresh installation. Containers run
 as UID/GID 10001, with read-only root filesystems, capabilities dropped and bounded
-logs. The receiver keeps its owned-lock safeguards and does not take a busy tuner
+logs. The receiver keeps its owned-lock safeguards and does not take a locked tuner
 from another application. Container stop allows 60 seconds for owned cleanup.
 
 ```sh

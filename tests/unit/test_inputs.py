@@ -44,6 +44,7 @@ class Device:
         if field == "lockkey":
             self.lock = None if value == "none" else value
             if self.takeover and value != "none":
+                self.lock = "foreign"
                 self.channel = "auto:9"
                 self.target = "udp://192.0.2.50:5000"
         if field == "channel":
@@ -68,36 +69,73 @@ def test_owned_lock_capture_cleanup():
     assert not any("force" in a for a in device.calls)
 
 
-@pytest.mark.parametrize("busy", ["lock", "channel", "target"])
-def test_busy_refused_without_mutation(busy):
+@pytest.mark.parametrize("configured", [False, True])
+def test_foreign_lock_refused_without_mutation(configured):
     device = Device()
-    setattr(
-        device, busy, {"lock": "foreign", "channel": "auto:7", "target": "udp://192.0.2.50:1"}[busy]
-    )
+    device.lock = "foreign"
+    if configured:
+        device.channel, device.target = "auto:7", "udp://192.0.2.50:1"
     with pytest.raises(TunerError, match="busy"):
         with Tuner(config(), device):
             pass
     assert all("set" not in a for a in device.calls)
 
 
-def test_acquisition_race_never_releases_foreign_lock():
+@pytest.mark.parametrize("configured", [False, True])
+def test_acquisition_race_never_releases_foreign_lock(configured):
     device = Device()
+    if configured:
+        device.channel, device.target = "auto:9", "udp://192.0.2.50:1"
     device.race = True
     with pytest.raises(TunerError):
         with Tuner(config(), device):
             pass
     assert device.lock == "foreign"
     assert not any(a[-2:] == ["/tuner1/lockkey", "none"] for a in device.calls)
+    assert not any("key" in a for a in device.calls)
 
 
-def test_busy_after_acquire_only_releases_owned_lock():
+def test_foreign_takeover_after_acquire_refuses_keyed_writes():
     device = Device()
     device.takeover = True
-    with pytest.raises(TunerError, match="became busy"):
+    with pytest.raises(TunerError, match="foreign lock"):
         with Tuner(config(), device):
             pass
     assert device.channel == "auto:9" and device.target == "udp://192.0.2.50:5000"
-    assert device.lock is None
+    assert device.lock == "foreign"
+
+
+@pytest.mark.parametrize(
+    ("channel", "target"),
+    [("auto:7", "none"), ("none", "udp://192.0.2.50:1"), ("auto:9", "udp://192.0.2.50:1")],
+)
+def test_unlocked_configured_tuner_is_acquired_and_retargeted(channel, target):
+    device = Device()
+    device.channel, device.target = channel, target
+    with Tuner(config(), device) as tuner:
+        assert device.lock == tuner.key
+        assert device.channel == "auto:7"
+        assert device.target == "udp://192.0.2.20:5000"
+        writes = [args for args in device.calls if "set" in args]
+        assert writes[0][-2:] == ["/tuner1/lockkey", tuner.key]
+        assert writes[1][-2:] == ["/tuner1/target", "none"]
+        assert writes[2][-2:] == ["/tuner1/channel", "auto:7"]
+        assert all(args[2:4] == ["key", tuner.key] for args in writes[1:])
+    assert device.lock is None and device.channel == "none" and device.target == "none"
+
+
+@pytest.mark.parametrize("lock_state", ["", "unknown", "192.0.2.50"])
+def test_unconfirmed_unlocked_state_is_refused(lock_state):
+    device = Device()
+
+    def runner(args):
+        result = device(args)
+        return lock_state if args[-1] == "/tuner1/lockkey" else result
+
+    with pytest.raises(TunerError, match="unlocked state"):
+        with Tuner(config(), runner):
+            pass
+    assert all("set" not in args for args in device.calls)
 
 
 def test_foreign_takeover_during_exit_no_unkeyed_cleanup():
@@ -188,8 +226,12 @@ def test_journal_replay_provenance(tmp_path):
     store.close()
 
 
-def test_acquire_timeout_releases_only_uncertain_owned_key():
+@pytest.mark.parametrize("configured", [False, True])
+def test_acquire_timeout_releases_only_uncertain_owned_key(configured):
     device = Device()
+    if configured:
+        device.channel, device.target = "auto:9", "udp://192.0.2.50:5000"
+    previous = device.channel, device.target
 
     def uncertain(args):
         result = device(args)
@@ -200,7 +242,7 @@ def test_acquire_timeout_releases_only_uncertain_owned_key():
     with pytest.raises(TunerError, match="timeout"):
         with Tuner(config(), uncertain):
             pass
-    assert device.lock is None and device.channel == "none" and device.target == "none"
+    assert device.lock is None and (device.channel, device.target) == previous
     assert device.calls[-1][2] == "key"
 
 

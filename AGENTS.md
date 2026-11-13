@@ -9,8 +9,10 @@ transport and XML times. CRC is integrity, never authentication. Missing schema/
 configuration is not successful validation. Never turn replay/System/Test traffic
 into operational public warnings. No public-warning, siren, IPAWS origination or
 outbound upload behavior. Never force-clear a tuner lock or contact the user's LAN
-from the cloud. Native discovery and automatic idle-tuner selection are allowed;
-require explicit --host when multiple devices exist. Use owned-lock operations.
+from the cloud. Native discovery and automatic unlocked-tuner selection are allowed;
+require explicit --host when multiple devices exist. A confirmed lockkey=none allows
+acquisition even with a configured channel/target; atomically acquire ownership
+before replacing them. Use owned-lock operations.
 Process live TS in memory; raw journals are opt-in. Preserve WARN message evidence.
 
 The user permits a public repository and normal source delivery. The user also

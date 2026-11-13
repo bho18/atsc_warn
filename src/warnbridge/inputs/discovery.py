@@ -121,9 +121,7 @@ def inspect_device(
             result.append(
                 {
                     "tuner": index,
-                    "availability": "idle"
-                    if Tuner.idle(snapshot, require_unlocked=True)
-                    else "busy",
+                    "availability": "available" if Tuner.unlocked(snapshot) else "busy",
                     "channel": status.get("ch"),
                     "rf": status,
                     **snapshot,
@@ -149,7 +147,7 @@ def receiver_config(config: Config, device: Device) -> Config:
 
 @contextmanager
 def open_receiver(config: Config, runner: Runner = run_command) -> Iterator[Tuner]:
-    """Select one device and acquire one idle tuner; retry only lost/busy leases."""
+    """Select one device and acquire one unlocked tuner; retry only lost/busy leases."""
     if not config.channel:
         raise ValueError("choose a physical RF channel with --channel (for example --channel 7)")
     device = select_device(config)
@@ -175,4 +173,4 @@ def open_receiver(config: Config, runner: Runner = run_command) -> Iterator[Tune
         finally:
             tuner.close()
         return
-    raise TunerBusy("all tuners are busy or foreign-owned; retry when one is idle")
+    raise TunerBusy("all tuners have an ownership lock or unknown lock state; retry when unlocked")
