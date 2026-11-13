@@ -46,18 +46,19 @@ class Store:
         try:
             self.db.execute("PRAGMA foreign_keys=ON")
             if readonly:
-                if self.db.execute("PRAGMA user_version").fetchone()[0] != 3:
+                if self.db.execute("PRAGMA user_version").fetchone()[0] != 4:
                     raise ValueError("unsupported database schema; run current writer migration")
                 return
             self.db.execute("PRAGMA journal_mode=WAL")
             self.db.execute("BEGIN IMMEDIATE")
             version = self.db.execute("PRAGMA user_version").fetchone()[0]
-            if version > 3:
+            if version > 4:
                 raise ValueError("database is newer than this application")
             for target, filename in (
                 (1, "001_initial.sql"),
                 (2, "002_receiver_status.sql"),
                 (3, "003_recoveries.sql"),
+                (4, "004_retention.sql"),
             ):
                 if version >= target:
                     continue
@@ -139,6 +140,11 @@ class Store:
         mid = None
         now = utc_now()
         with self.db:
+            oid = self.db.execute(
+                "UPDATE observation_sequence SET last_id=max(last_id,"
+                "(SELECT coalesce(max(id),0) FROM observations))+1 WHERE singleton=1 "
+                "RETURNING last_id"
+            ).fetchone()[0]
             if event.kind == "message" and parsed is not None:
                 mid = self._record_content(event, parsed, now)
             # Empirical interpretation only, suppressed for heartbeat and implausible years.
@@ -148,11 +154,12 @@ class Store:
                 if 2000 <= stamp.year <= 2100:
                     inferred = stamp.isoformat()
             self.db.execute(
-                "INSERT INTO observations(session_id,message_id,processed_at,received_at,"
+                "INSERT INTO observations(id,session_id,message_id,processed_at,received_at,"
                 "monotonic_ns,chunk_index,transport_id,inferred_transport_at,header,body,assembled,"
                 "raw_ts,offsets,stored_crc,calculated_crc,state,reason) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
+                    oid,
                     sid,
                     mid,
                     now,
@@ -675,11 +682,26 @@ class Store:
         source: str | None = "live",
         status: str | None = None,
         cancellations: bool = False,
+        lifecycle: str | None = None,
     ) -> dict[str, Any]:
         groups = self.alert_groups(source, status, cancellations=cancellations)
+        # Lifecycle includes source-scoped Update/Cancel resolution. Filtering must
+        # happen before pagination, never just against the displayed page or XML status.
+        projected: dict[str, dict[str, Any]] = {}
+        if lifecycle is not None:
+            matching = []
+            for members in groups:
+                item = self.message(members[0], detail=False, source=source)
+                if item is not None and item["alert"]["lifecycle"] == lifecycle:
+                    matching.append(members)
+                    if offset < len(matching) <= offset + limit:
+                        projected[members[0]] = item
+            groups = matching
         items = []
         for members in groups[offset : offset + limit]:
-            item = self.message(members[0], detail=False, source=source)
+            item = projected.get(members[0]) or self.message(
+                members[0], detail=False, source=source
+            )
             if item is not None:
                 self.attach_variants(item, members, source)
                 items.append(item)

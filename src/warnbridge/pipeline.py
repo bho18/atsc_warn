@@ -9,6 +9,7 @@ from warnbridge.config import Config
 from warnbridge.formats.xml import parse_body, readable_text
 from warnbridge.inputs.streams import Chunk, Journal
 from warnbridge.recovery import recover_rejections
+from warnbridge.storage.retention import retain, storage_usage
 from warnbridge.storage.store import Store
 from warnbridge.transport.decoder import Decoder, Event
 
@@ -36,6 +37,8 @@ class Ingestor:
             recovered = recover_rejections(self.store, config)
             with self.store.db:
                 self.store.db.execute("UPDATE sessions SET state='abandoned' WHERE state='running'")
+            retain(self.store.db, config)
+            self.last_retention = time.monotonic()
             self.sid = self.store.start_session(source, identity)
             if recovered:
                 self.store.health_event(
@@ -112,12 +115,11 @@ class Ingestor:
                     self.last_now = chunk.monotonic_ns / 1e9
                 if journal and chunk.data:
                     journal.append(chunk)
-                # Stop instead of deleting accepted evidence when storage quota is reached.
-                size = sum(
-                    p.stat().st_size
-                    for p in [Path(self.config.database), Path(self.config.database + "-wal")]
-                    if p.exists()
-                )
+                # Stop instead of deleting alert evidence when storage quota is reached.
+                if time.monotonic() - self.last_retention >= 60:
+                    retain(self.store.db, self.config)
+                    self.last_retention = time.monotonic()
+                size = storage_usage(self.config.database, self.store.db)["used_bytes"]
                 if size >= self.config.max_database_bytes:
                     self.store.health_event(
                         self.sid,

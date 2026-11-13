@@ -107,7 +107,7 @@ def test_v1_migration_preserves_original_evidence(tmp_path):
         assert api.get("/api/v1/deliveries").json()["total"] == 1
         assert api.get("/api/v1/health").json()["rf_tuner"] == "not_checked"
     store = Store(config.database)
-    assert store.db.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert store.db.execute("PRAGMA user_version").fetchone()[0] == 4
     assert tuple(
         store.db.execute("SELECT raw_ts,body,header FROM observations").fetchone()
     ) == tuple(original)

@@ -195,11 +195,19 @@ interesting private evidence before rotation. Replay is deterministic in order,
 without artificial wall-clock delays, and always labeled replay. Missing/rotated
 prefixes may start mid-message and correctly produce orphan diagnostics.
 
-Accepted message evidence persists until explicitly archived. Default DB+WAL
-threshold 512 MiB stops ingestion rather than silently deleting accepted data;
-final bounded pending evidence can exceed the threshold slightly. Rejected evidence
-and health events retain the newest 1000 each; session counters keep total failures.
-No privileged container or external log service is needed.
+Alert evidence persists until explicitly archived. Heartbeat/Link Test diagnostics
+expire after diagnostic_retention_days (default 7), and rejected evidence after
+failure_retention_days (default 30), also capped by max_rejected (default 1000).
+Auxiliary health/web diagnostics and unreferenced ended sessions expire after the
+diagnostic period. Referenced sessions stay with their alert/failure evidence.
+Retention uses processing time, never XML sent time or replay reception metadata.
+The UI can preview and confirm a failure-only purge, including all retained failures.
+
+The default 512 MiB stop threshold applies to occupied SQLite pages after cleanup.
+Deleted pages are reusable, so the on-disk file may remain large without blocking
+reception. Health shows occupied, reusable and physical DB+WAL bytes separately.
+Live cleanup does not VACUUM or rewrite the entire database. Actual disk exhaustion
+still stops writes. Historical counters are not decremented when their rows expire.
 
 To back up native data consistently while a reader/writer is running:
 

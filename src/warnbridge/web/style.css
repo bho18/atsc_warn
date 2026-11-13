@@ -23,3 +23,6 @@
 .phone-preview h4,.alert-body .phone-preview h4{font-size:16px;font-weight:650;line-height:1.4;margin:12px 0 8px;color:#f1f6f3}
 .phone-preview .phone-message{font-size:14px;line-height:1.6;margin:0;color:#eef4f0;white-space:pre-wrap;overflow-wrap:anywhere}
 .message-variant{margin:18px 0}.message-variant>button{margin-top:10px}
+
+.maintenance-controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0}
+dialog{max-width:min(580px,90vw);background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:24px}dialog::backdrop{background:#0009}dialog p{overflow-wrap:anywhere}#confirmPurge{border-color:#f5c678}#retentionPanel{margin-top:18px}#retentionPanel p{max-width:850px}

@@ -2,7 +2,7 @@
 
 Implemented sequence: independent golden vectors and transport decoder; file/stdin
 and deterministic replay; SQLite evidence store; raw UDP/journaling and controlled
-tuner adapter; read-only API/offline UI; container/CI and operational documentation.
+tuner adapter; local API/offline UI; container/CI and operational documentation.
 This is a modular single application with no cloud dependency in the receive path.
 
 ```mermaid
@@ -25,25 +25,32 @@ omitted when using the decoder as a library. `formats/` owns dispatch and preser
 trees. `inputs/` owns acquisition and replay. `pipeline.py` handles classification,
 summary counters and persistence. `storage/001_initial.sql` is the explicit initial
 migration, followed by 002_receiver_status.sql for persisted RF samples and
-003_recoveries.sql for auditable reinterpretation of rejected observations; newer unknown database versions are refused by writers. `domain/` projects readable CAP fields, declared lifecycle and derived geometry
-from preserved trees without writing evidence. `api/` has no receiver startup hook
-or mutation routes. `web/` contains all necessary UI assets.
+003_recoveries.sql for auditable reinterpretation of rejected observations, and
+004_retention.sql for non-reused observation IDs and maintenance status; newer unknown database versions are refused by writers. `domain/` projects readable CAP fields, declared lifecycle and derived geometry
+from preserved trees without writing evidence. `api/` has no receiver startup hook; its only user-requested mutation is a
+confirmed failure-only purge. `web/` contains all necessary UI assets.
 
 Each accepted observation stores raw TS bytes, stream offsets, assembled bytes,
 header/body, CRCs, transport ID, reception metadata, session and processing time.
-Content and protocol identities are distinct. Rejections are bounded independently
-(default newest 1000); counters survive pruning in receiver sessions. Health events
-retain the newest 1000. Accepted evidence is not automatically deleted. At a 512 MiB
-database-plus-WAL threshold ingestion stops for archival; in-flight cleanup can
-overshoot by a bounded pending batch. SQLite page reuse can leave file size at its
-high-water mark. Optional raw journals keep eight 8 MiB segments (base64 overhead included).
-Live input discards unrelated packets and creates no raw journal by default; only
-WARN packet/message evidence enters SQLite. Message JSONL is flushed during reception.
-Disk-full failures can prevent final diagnostics; no software can promise durable
-writes after filesystem failure.
+Content and protocol identities are distinct. Heartbeat/Link Test deliveries expire
+after seven days, rejected evidence after thirty days (and at newest-1000), and
+health/web diagnostics after seven days. Configurable retention uses processing time.
+Alert content, raw evidence and reference relationships are never age-pruned.
+Recovered diagnostic rows and their recovery audit expire together. Diagnostic
+content is removed only after its last delivery across every source expires. Ended
+sessions are removed only when old and unreferenced; running sessions are kept.
+
+SQLite deletion leaves reusable pages: the 512 MiB ingestion quota uses occupied
+pages, while health exposes physical DB+WAL bytes and reusable pages separately.
+Cleanup runs before the quota check and once per minute during ingestion (including
+idle ticks) or independently in the web service. No live VACUUM runs. Physical disk
+exhaustion can still prevent final diagnostics. The observation ID sequence survives
+deletion of the last row, preventing old URLs from resolving to newly received data.
 
 A per-database POSIX flock allows only one ingestion worker, including imports.
-SQLite WAL permits API readers; each request opens a read-only connection. Sessions
+SQLite WAL permits API readers; each request holds a read-only snapshot.
+Maintenance and explicitly requested failure purges use separate short write
+transactions, serialized by SQLite with ingestion. Sessions
 left running after an unclean crash are marked abandoned on the next exclusive
 writer acquisition. Legacy API detail embeds at most 100 observations; paginated /api/v1/deliveries
 provides full accepted delivery history; raw parts select
@@ -106,7 +113,7 @@ reception/processing clocks, raw TS, assembled bytes and offsets stay unchanged.
 fields, plus recovery time. Historical session counters remain historical; a separate
 recovered count and startup health event report corrections. A second startup does
 not create duplicate deliveries. Packet-loss/timeout fragments are never stitched.
-The read-only API does not perform recovery or start capture.
+The web service does not reinterpret failures or start capture.
 
 The alert inbox includes unknown and malformed content for inspection, excluding only
 heartbeat/Link Tests and proper CAP/CMAC Cancel cards. Cancel records remain available in
@@ -152,7 +159,24 @@ Storage usage and the configured archive stop threshold are visible through heal
   unknown roots and malformed XML. Proper Cancel has separate history and attaches
   to its target; all-clear wording never hides a new Alert. Source/status selectors
   and pagination remain explicit presentation choices.
-- The default 512 MiB database+WAL stop threshold remains configurable; 80% and full
-  usage now show a UI warning, and quota stops have a specific health event. Rejected
-  retention remains newest 1000; accepted data is not silently pruned. Physical disk
-  exhaustion and unobserved protocol variants remain operational limitations.
+- The default 512 MiB occupied-page stop threshold remains configurable; 80% and full
+  usage show a UI warning. Cleanup runs before that check; expired diagnostics free
+  reusable pages. Alert evidence stays intact. Disk exhaustion and unobserved
+  protocol variants remain operational limitations.
+
+## Failure purge and lifecycle filtering
+
+GET /api/v1/diagnostics/purge-preview returns a processing-time cutoff, maximum
+observation ID, count and reason breakdown. POST /api/v1/diagnostics/purge requires
+explicit confirmation, JSON and X-WarnBridge-Action: purge-failures. Cross-origin
+requests are refused and CORS preflights are not allowed. Existing socket-peer LAN
+restrictions also apply. This is an internal operator control, not authentication.
+Deletion selects only still-rejected rows at or before the previewed ID and older
+than its cutoff. New arrivals and recovered/accepted messages are protected. A
+bounded last-action summary is stored; original session counters remain historical.
+
+GET /api/v1/alerts?lifecycle=active resolves the same timing, source scope,
+Update/Cancel references and CAP/CMAC grouping as the cards. It filters groups before
+pagination/counting; the full lifecycle is not inferred from status=Actual alone.
+Only the requested page's projected results are retained in memory. Expiration is
+re-evaluated on each request. Default All states preserves the existing inbox.

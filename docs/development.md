@@ -56,8 +56,9 @@ For native discovery/direct-IP operation use `warnbridge discover` and
 including a final typed summary; offline decode/replay retain their summary format.
 Raw arrival files are opt-in with --record-raw.
 
-UI/RF changes use schema 2; stop and restart both listener/server when upgrading
-from schema 1. Existing evidence is migrated in place. Read docs/ui-monitoring.md.
+The current retention update uses schema 4; stop and restart both listener/server when upgrading
+from an older schema. Alert evidence is migrated in place; diagnostic retention
+begins at startup. Read docs/ui-monitoring.md.
 For the extended browser smoke, --check-rf mocks RF health responses and expects a
 synthetic fixture archive with 35 live heartbeat deliveries plus one replay heartbeat;
 --check-cap additionally verifies hostile XML text stays inert. The ordinary browser

@@ -219,3 +219,50 @@ with the normal pull/up commands above. No Compose/config change or database
 migration is required. Existing retained failures and session counters stay as
 historical evidence; compare new records and the new receiver session after the
 update. Real sequence loss, changed bytes and CRC failures remain rejected.
+
+## Retention and active-filter update (schema 4)
+
+This update migrates schema 3 to 4 and begins the selected retention policy on
+startup: seven days for heartbeat/Link Test and auxiliary diagnostics, thirty days
+for failures (also capped at newest 1000). Alert history remains stored. New TOML
+keys are optional; existing configurations automatically receive these defaults:
+
+```toml
+diagnostic_retention_days = 7
+failure_retention_days = 30
+```
+
+Both accept whole days from 1 to 3650. Keep receiver and web on the same configuration.
+The web service also runs retention if reception is stopped. No Compose-file refresh
+or first-install helper is needed. Observation IDs are never reused after deletion.
+
+Before the first update, save a consistent snapshot if you want to preserve older
+diagnostics or retain a rollback path. This backup is outside automatic retention:
+
+```sh
+sudo docker compose -f /opt/warnbridge/compose.yaml exec -T web python - <<'PYBACKUP'
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+from warnbridge.config import load_config
+path = Path(load_config('/app/config/live.toml').database)
+backup = path.with_name('before-retention-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '.db')
+with sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True) as source:
+    with sqlite3.connect(backup) as target:
+        source.backup(target)
+print(backup)
+PYBACKUP
+sudo docker compose -f /opt/warnbridge/compose.yaml pull
+sudo docker compose -f /opt/warnbridge/compose.yaml up -d
+```
+
+Backups consume space in the named volume and require operator-managed retention;
+copy them elsewhere for protection against volume loss. Old images cannot use schema
+4: restore a consistent pre-update backup before rolling back to a schema-3 image.
+
+In the UI select **Alert state → Active only**, or open **Retained failures →
+Preview purge** to remove older/all failures after confirmation. **Storage & retention**
+shows the effective policy and space available for reuse. Purging does not decrement
+historical session counters or delete accepted alerts. The database file may not
+shrink immediately; freed pages are reused and do not count against the live archive
+quota. No blocking live VACUUM or hardware control is performed by cleanup.

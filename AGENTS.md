@@ -13,7 +13,10 @@ from the cloud. Native discovery and automatic unlocked-tuner selection are allo
 require explicit --host when multiple devices exist. A confirmed lockkey=none allows
 acquisition even with a configured channel/target; atomically acquire ownership
 before replacing them. Use owned-lock operations.
-Process live TS in memory; raw journals are opt-in. Preserve WARN message evidence.
+Process live TS in memory; raw journals are opt-in. Preserve alert evidence.
+User-authorized retention expires heartbeat/Link Test and auxiliary diagnostics after
+7 days, failed evidence after 30 days (configurable). The local UI may explicitly
+purge retained failures after a count preview and confirmation; never purge alerts.
 
 The user permits a public repository and normal source delivery. The user also
 authorizes WarnBridge container image publication to GHCR for pull-based installation

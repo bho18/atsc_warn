@@ -735,3 +735,33 @@ registry pull verification are performed through the existing container workflow
   Historical rejection records/counters are retained; the correction applies to
   new ingestion. Cloud tests do not contact hardware; live post-update acceptance
   remains pending. Private diagnostic data is excluded from this release.
+
+## Retention, failure purge and active-alert filtering (November 12, 2026)
+
+- `./scripts/validate.sh`: **226 tests passed**; Ruff lint and formatting passed;
+  mypy passed for 23 source files. Independent fixture replay remains two complete
+  messages/two CRC passes/zero failures. The existing Starlette/httpx deprecation
+  warning remains.
+- Synthetic retention tests verify 7-day heartbeat/Link Test expiry, 30-day failure
+  expiry, shared-content preservation across sources, raw alert bytes unchanged,
+  preserved Test/System/Cancel/unknown alert content, recovery-audit cleanup,
+  auxiliary-log/session cleanup, no observation ID reuse, and schema-3 migration.
+  A simulated old-writer insert during upgrade cannot cause an ID collision.
+- Both idle ingestion and a web-only lifespan exercise periodic cleanup. Expired
+  diagnostics are removed before quota enforcement; reusable SQLite pages permit
+  new ingestion even when physical file size exceeds the occupied-page quota.
+- Purge API tests verify count previews, age selection, rejection of cross-origin
+  and unconfirmed requests, preview ID bounds protecting later arrivals, accepted
+  alert preservation, repeated-request idempotence, and raw URLs returning 404
+  after deletion. No purge creates deliveries or changes historical counters.
+- Active-filter tests cover resolved cancellation/supersession, expiry on refresh,
+  standalone CMAC timing, paired CAP/CMAC groups, correct totals/pagination, and
+  source/status composition. Replay cancellation does not hide live active alerts.
+- Chromium lifecycle smoke exercises active/all-state selection, confirmed purge,
+  preview cancellation, raw downloads, retained alerts, cancellation content,
+  Unicode, inert hostile text, map state and desktop/mobile layouts. The API and
+  browser use isolated synthetic archives; no tuner or user LAN was contacted.
+- Schema 4 migration is required. First startup applies configured retention;
+  pre-update backups retain any older diagnostics the operator wants to keep.
+  Actual long-running hardware behavior and disk-exhaustion recovery remain
+  unverified; live cleanup does not VACUUM or reclaim physical file size directly.

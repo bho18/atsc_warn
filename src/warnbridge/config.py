@@ -32,6 +32,8 @@ class Config:
     capture_segments: int = 8
     max_database_bytes: int = 512 * 1024 * 1024
     max_rejected: int = 1000
+    diagnostic_retention_days: int = 7
+    failure_retention_days: int = 30
     limits: Limits = field(default_factory=Limits)
 
     def __post_init__(self) -> None:
@@ -58,6 +60,9 @@ class Config:
             raise ValueError("no_data_warning must be positive")
         if min(self.capture_segments, self.max_rejected) < 1:
             raise ValueError("retention limits must be positive")
+        for days in (self.diagnostic_retention_days, self.failure_retention_days):
+            if type(days) is not int or not 1 <= days <= 3650:
+                raise ValueError("retention days must be an integer from 1 to 3650")
         if self.capture_segment_bytes < 131072 or self.max_database_bytes < 1048576:
             raise ValueError("storage limits too small")
 

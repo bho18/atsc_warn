@@ -2,7 +2,7 @@
 
 An experimental, self-hosted PBS WARN ATSC 1.0 receiver and evidence archive.
 Decodes the observed PID 0x0911 framing, preserves original bytes, and serves a
-local read-only API and offline alert inbox. Reception never requires
+local API and offline alert inbox. Reception never requires
 an Internet service. **CRC integrity is not authenticity. This is not a certified
 alerting product and sends no public warnings or operational notifications.**
 
@@ -119,7 +119,7 @@ capture. The image includes the HDHomeRun CLI. Normal ThinkCentre deployment use
 - `domain`: readable CAP fields, declared lifecycle and offline coordinate geometry.
 - `inputs`: file, raw UDP, journal replay, owned HDHomeRun control, saved web JSON.
 - `storage`: migration and immutable deliveries; SHA-256 content deduplication.
-- `api`, `web`: read-only API, offline assets, provenance and raw-byte inspection.
+- `api`, `web`: local queries, confirmed failure cleanup, offline assets and byte inspection.
 - `tests`: independent golden vectors, synthetic faults/CAP, storage/API/UDP/tuner tests.
 
 CAP presentation includes multilingual information blocks, instructions, wireless
@@ -145,6 +145,21 @@ with the experimental decoder.**
 The UI defaults to **Alerts**, with check traffic in **Diagnostics**. RF status is
 polled by the live listener and shows stale/error/stopped states. Heartbeat freshness
 is separate from RF lock and alert authenticity. Existing evidence is retained;
-the alert view needs no database migration beyond schema 2. Restart listener and
+the current archive uses schema 4 for retention and stable observation IDs. Restart listener and
 server after a native/source upgrade. Docker users update with pull/up as above.
 See [UI monitoring](docs/ui-monitoring.md).
+
+## Retention and active alerts
+
+Choose **Alert state → Active only** to hide expired, cancelled, superseded,
+scheduled and unknown-status alerts. This uses the same lifecycle as the cards,
+including CAP/CMAC grouping and source-scoped cancellations, before pagination.
+
+Heartbeat/Link Test deliveries and auxiliary diagnostic logs expire after **7 days**;
+failed-message evidence expires after **30 days**, with the existing newest-1000 cap.
+Alert history (including Test/System CAP, cancellations and unknown content) is kept.
+Cleanup runs at startup and every minute while the receiver or web service is running.
+**Retained failures → Preview purge** lets you remove older failures or all retained
+failures after reviewing the count. **Storage & retention** shows policy and space use.
+See the [Docker runbook](docs/docker-live.md#retention-and-active-filter-update-schema-4)
+for first-update backup and configuration details.

@@ -135,11 +135,11 @@ commands below apply only to an intentional source/native installation.
 ### Native/source upgrade alternative
 
 Stop **both** the listener and web server before updating. This release uses
-schema 3; migration 003 adds a recovery audit table and reference index. For installations still on schema 1, database migration 002
+schema 4; migration 004 adds retention metadata and stable observation IDs. Migration 003 adds a recovery audit table and reference index. For installations still on schema 1, database migration 002
 adds a per-session latest RF snapshot table and an observation index, taking schema
-version 1 to 2. Existing messages, delivery counts, raw bytes and relationships are
-preserved; no reimport or database deletion is needed. Old binaries must be stopped
-because they do not understand schema 2.
+version 1 to 2. Alert messages, raw bytes and relationships are preserved;
+diagnostic retention begins at startup. No reimport is needed. Old binaries must
+be stopped because they do not understand schema 4.
 
 ```sh
 git pull --ff-only https://github.com/bho18/atsc_warn.git codex/warnbridge-initial
@@ -183,3 +183,24 @@ Restarting the updated receiver automatically recovers eligible retained failure
 Recovered deliveries retain original IDs, source and timestamps. Message observation
 metadata includes recovery time and the previous reason; session counters are not
 rewritten. No manual export/reimport or raw recording needs to be enabled.
+
+## Retention and cleanup controls
+
+Alert state includes Active only plus expired, cancelled, superseded, scheduled,
+unknown and non-Actual views. The active filter composes with source and declared
+status, uses the resolved card lifecycle, and counts before pagination. Cancellation
+history remains a separate list. Active does not imply verified authenticity.
+
+Storage & retention shows the configured 7-day diagnostic and 30-day failure
+policies, last cleanup check, occupied/reusable space and physical file sizes.
+Retained failures offers age choices or all failures, followed by a preview of
+counts/reasons and an explicit confirmation dialog. Cancel changes nothing. Purging
+keeps accepted messages and new records outside the preview. Failure pagination
+resets after purge and recovers if automatic expiry empties the current page.
+Empty assembled/header download links are hidden when the evidence is absent.
+
+Automatic cleanup runs on service startup and every minute, including while the
+receiver is idle or only the web service is running. Only heartbeat/Link Test
+content is automatically expired among accepted messages. Actual alerts, other CAP
+statuses, cancellations, unknown or malformed content stay inspectable. Retention
+uses processing time; an old broadcast timestamp does not cause immediate deletion.

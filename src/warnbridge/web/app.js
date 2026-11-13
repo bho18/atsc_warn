@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 let offset = 0, mode = 'alerts', view = 'deliveries', timezone = 'America/Chicago';
 let failureOffset = 0, cancellationOffset = 0;
 let refreshPending = false;
+let purgePreview = null;
 let refreshSerial = 0, inspectSerial = 0, historySerial = 0;
 let selectedMessage = null, historyOffset = 0, selectedDelivery = null, selectedAlertState = '';
 const sourceNames = {live_hdhomerun:'Live HDHomeRun',live_udp:'Live UDP',replay:'Replay',file:'File import',stdin:'Stdin'};
@@ -12,7 +13,7 @@ async function get(path, format = 'json') {
   const deadline = setTimeout(()=>controller.abort(),8000);
   try {
     const r = await fetch(path,{signal:controller.signal});
-    if (!r.ok) throw new Error(`Local API: ${r.status}`);
+    if (!r.ok) {const error=new Error(`Local API: ${r.status}`);error.status=r.status;throw error;}
     return format==='text' ? await r.text() : await r.json();
   } finally { clearTimeout(deadline); }
 }
@@ -114,7 +115,7 @@ function renderAlerts(data) {
     $('alertCards').append(card);
   }
   if (!data.items.length) {
-    const empty=node('div',null,'empty');empty.append(node('h3','No matching alerts received'),node('p',$('source').value==='live' ? 'Live alerts will appear here when received. Heartbeats and Link Tests check the path; they are available in Diagnostics. Choose replay to explore the synthetic alert demo.' : 'No alert content matches this source and status. Check Diagnostics for heartbeat and Link Test traffic.'));
+    const empty=node('div',null,'empty');empty.append(node('h3',$('alertLifecycle').value==='active' ? 'No active alerts in this view' : 'No matching alerts received'),node('p',$('alertLifecycle').value==='active' ? 'Only alerts currently marked Active are shown. Choose All states to see expired, cancelled, scheduled, or unknown-status messages.' : $('source').value==='live' ? 'Live alerts will appear here when received. Heartbeats and Link Tests check the path; they are available in Diagnostics. Choose replay to explore the synthetic alert demo.' : 'No alert content matches this source and status. Check Diagnostics for heartbeat and Link Test traffic.'));
     $('alertCards').append(empty);
   }
 }
@@ -213,7 +214,8 @@ function renderFailures(data) {
   for(const item of data.items) {
     const row=node('div',null,'diagnostic-row');
     row.append(node('p',`#${item.id} · ${item.reason} · ${stamp(item.received_at || item.processed_at)} · ${item.bytes} TS bytes`));
-    for(const [part,label] of [['raw_ts','Download packets'],['assembled','Download assembled message'],['header','Download header']]) {
+    for(const [part,label,size] of [['raw_ts','Download packets',item.bytes],['assembled','Download assembled message',item.assembled_bytes],['header','Download header',item.header_bytes]]) {
+      if(!size)continue;
       const link=node('a',label);link.href=`/api/v1/diagnostics/${item.id}/raw?part=${part}`;row.append(link);
     }
     $('failureItems').append(row);
@@ -323,15 +325,17 @@ async function refresh(force = false) {
   try {
     const params=query({limit:20,offset});
     if ($('classification').value) params.set('classification',$('classification').value);
-    if (mode==='alerts') {params.set('source',$('source').value || 'all');if ($('alertStatus').value) params.set('status',$('alertStatus').value);params.delete('classification');}
+    if (mode==='alerts') {params.set('source',$('source').value || 'all');if ($('alertStatus').value) params.set('status',$('alertStatus').value);if ($('alertLifecycle').value) params.set('lifecycle',$('alertLifecycle').value);params.delete('classification');}
     const endpoint=mode==='alerts' ? 'alerts' : view==='deliveries' ? 'deliveries' : 'messages';
     const cancelParams=query({cancellations:true,limit:10,offset:cancellationOffset});
     if(!cancelParams.has('source'))cancelParams.set('source','all');
     const [health,metrics,data,failures,cancellations]=await Promise.all([get('/api/v1/health'),get('/api/v1/metrics'),get(`/api/v1/${endpoint}?${params}`),get(`/api/v1/diagnostics?limit=10&offset=${failureOffset}`), mode==='alerts' ? get(`/api/v1/alerts?${cancelParams}`) : Promise.resolve(null)]);
     if (serial!==refreshSerial) return;
+    if(offset && offset>=data.total) {offset=0;refreshPending=false;await refresh(true);return;}
     timezone=health.display_timezone;
     $('storageNotice').hidden=!health.storage || health.storage.state==='ok';
-    if(health.storage && health.storage.state!=='ok') $('storageNotice').textContent=`Archive ${health.storage.state==='full' ? 'limit reached — reception stops' : 'nearing its limit'}: ${Math.round(health.storage.bytes/1048576)} of ${Math.round(health.storage.limit_bytes/1048576)} MiB. Archive data or increase the configured archive limit.`;
+    if(health.storage && health.storage.state!=='ok') $('storageNotice').textContent=`Archive ${health.storage.state==='full' ? 'limit reached — reception stops' : 'nearing its limit'}: ${Math.round(health.storage.used_bytes/1048576)} of ${Math.round(health.storage.limit_bytes/1048576)} MiB. Archive data or increase the configured archive limit.`;
+    renderRetention(health);
     $('timezone').textContent=timezone;
     renderRF(health);
     renderHeartbeat(health.connection);
@@ -339,6 +343,7 @@ async function refresh(force = false) {
     $('countLabel').textContent=mode==='alerts' ? `ALERTS · ${$('source').value==='live' ? 'LIVE' : 'FILTERED'}` : 'ARCHIVE TOTAL';
     $('count').textContent=mode==='alerts' ? data.total : `${metrics.messages} contents`;
     $('failureCount').textContent=`${metrics.deliveries} deliveries · ${metrics.retained_rejections} retained failures`;
+    if(failureOffset && failureOffset>=failures.total) {failureOffset=0;refreshPending=false;await refresh(true);return;}
     renderFailures(failures);
     if(cancellations)renderCancellations(cancellations);
     $('sessions').textContent=JSON.stringify(metrics.sessions,null,2);
@@ -365,7 +370,14 @@ async function refresh(force = false) {
     $('previous').disabled=offset===0;
     $('next').disabled=offset+20>=data.total;
     $('connection').textContent='Local archive connected · status refreshes every 5 seconds';
-    if (!$('detail').hidden) await refreshInspection();
+    if (!$('detail').hidden) {
+      try {await refreshInspection();}
+      catch(error) {
+        if(error.status!==404)throw error;
+        selectedMessage=null;++inspectSerial;++historySerial;window.WarnBridgeMap.clear();$('detail').hidden=true;
+        $('connection').textContent='Selected record is no longer retained · local archive connected';
+      }
+    }
   } catch (error) {
     if (serial===refreshSerial) {
       $('connection').textContent=`Disconnected · ${error.message}`;
@@ -376,6 +388,52 @@ async function refresh(force = false) {
     }
   } finally { if (serial===refreshSerial) refreshPending=false; }
 }
+
+function renderRetention(health) {
+  const r=health.retention, s=health.storage;
+  if(!r || !s)return;
+  $('retentionPolicy').textContent=`Heartbeats, Link Tests, and diagnostic logs: ${r.diagnostic_days} days. Failed-message evidence: ${r.failure_days} days, capped at ${r.max_failures} records.`;
+  $('storageUsage').textContent=`Archive: ${(s.used_bytes/1048576).toFixed(1)} MiB used of ${Math.round(s.limit_bytes/1048576)} MiB; ${(s.reusable_bytes/1048576).toFixed(1)} MiB available for reuse. Files on disk: ${(s.bytes/1048576).toFixed(1)} MiB.`;
+  const run=r.maintenance.find(item=>item.kind==='automatic');
+  const old=!run || Date.now()-Date.parse(run.at)>180000;
+  $('retentionStatus').textContent=run ? `Last automatic cleanup check: ${stamp(run.at)}${old ? ' · overdue' : ' · checked every minute'}` : 'Automatic cleanup has not run yet.';
+  $('retentionStatus').className=old ? 'state-warning' : '';
+}
+$('previewPurge').onclick=async()=>{
+  $('previewPurge').disabled=true;
+  $('purgeStatus').textContent='Checking retained failures…';
+  try {
+    purgePreview=await get(`/api/v1/diagnostics/purge-preview?older_than_days=${$('purgeAge').value}`);
+    $('purgeSummary').textContent=`${purgePreview.count} failed records stored before ${stamp(purgePreview.before)} match this selection across all sources.`;
+    $('purgeReasons').textContent=purgePreview.reasons.map(r=>`${r.reason}: ${r.count}`).join('\n') || 'No matching failures.';
+    $('confirmPurge').disabled=purgePreview.count===0;
+    $('purgeStatus').textContent='';
+    $('purgeDialog').showModal();
+  } catch(error) {$('purgeStatus').textContent=`Preview failed: ${error.message}`;}
+  finally {$('previewPurge').disabled=false;}
+};
+$('cancelPurge').onclick=()=>{$('purgeDialog').close();purgePreview=null;};
+$('purgeDialog').addEventListener('cancel',()=>{purgePreview=null;});
+$('confirmPurge').onclick=async()=>{
+  if(!purgePreview)return;
+  const preview=purgePreview;purgePreview=null;
+  $('confirmPurge').disabled=true;
+  $('purgeDialog').close();
+  $('previewPurge').disabled=true;
+  $('purgeStatus').textContent='Purging selected failures…';
+  try {
+    const response=await fetch('/api/v1/diagnostics/purge',{
+      method:'POST',headers:{'Content-Type':'application/json','X-WarnBridge-Action':'purge-failures'},
+      body:JSON.stringify({before:preview.before,through_id:preview.through_id,confirm:true})
+    });
+    if(!response.ok)throw new Error(`Local API: ${response.status}`);
+    const result=await response.json();
+    $('purgeStatus').textContent=`Purged ${result.removed} failed records. Accepted messages were kept.`;
+    failureOffset=0;await refresh(true);
+  } catch(error) {$('purgeStatus').textContent=`Could not confirm purge: ${error.message}. Refresh before trying again.`;}
+  finally {$('previewPurge').disabled=false;}
+};
+
 function changeView(next) {
   view=next;offset=0;
   $('deliveriesTab').setAttribute('aria-selected',String(view==='deliveries'));
@@ -388,7 +446,7 @@ $('refresh').onclick=()=>refresh(true);
 $('failureCount').onclick=()=>{$('failurePanel').open=true;$('failurePanel').scrollIntoView({behavior:'smooth'});};
 for(const [id,delta] of [['failurePrevious',-10],['failureNext',10]]) $(id).onclick=()=>{failureOffset=Math.max(0,failureOffset+delta);refresh(true);};
 for(const [id,delta] of [['cancellationPrevious',-10],['cancellationNext',10]]) $(id).onclick=()=>{cancellationOffset=Math.max(0,cancellationOffset+delta);refresh(true);};
-for (const id of ['source','classification','alertStatus']) $(id).onchange=()=>{offset=0;cancellationOffset=0;selectedMessage=null;++inspectSerial;++historySerial;window.WarnBridgeMap.clear();$('detail').hidden=true;refresh(true);};
+for (const id of ['source','classification','alertStatus','alertLifecycle']) $(id).onchange=()=>{offset=0;cancellationOffset=0;selectedMessage=null;++inspectSerial;++historySerial;window.WarnBridgeMap.clear();$('detail').hidden=true;refresh(true);};
 $('previous').onclick=()=>{offset=Math.max(0,offset-20);refresh(true);};
 $('next').onclick=()=>{offset+=20;refresh(true);};
 $('historyPrevious').onclick=()=>{historyOffset=Math.max(0,historyOffset-10);loadHistory().catch(e=>{$('connection').textContent=e.message;});};
@@ -400,7 +458,7 @@ function changeMode(next) {
   $('diagnosticsTab').setAttribute('aria-selected',String(mode==='diagnostics'));
   $('diagnosticArchive').hidden=mode!=='diagnostics';$('typeFilter').hidden=mode!=='diagnostics';
   $('cancellationHistory').hidden=mode!=='alerts';
-  $('alertCards').hidden=mode!=='alerts';$('statusFilter').hidden=mode!=='alerts';$('alertNotice').hidden=mode!=='alerts';
+  $('lifecycleFilter').hidden=mode!=='alerts';$('alertCards').hidden=mode!=='alerts';$('statusFilter').hidden=mode!=='alerts';$('alertNotice').hidden=mode!=='alerts';
   $('viewTitle').textContent=mode==='alerts' ? 'Alert inbox' : 'Diagnostic archive';refresh(true);
 }
 $('alertsTab').onclick=()=>changeMode('alerts');$('diagnosticsTab').onclick=()=>changeMode('diagnostics');
