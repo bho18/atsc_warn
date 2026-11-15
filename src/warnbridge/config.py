@@ -1,3 +1,4 @@
+import math
 import tomllib
 from dataclasses import dataclass, field
 from ipaddress import IPv4Address, ip_network
@@ -23,6 +24,9 @@ class Config:
     full_multiplex: bool = False
     record_raw: bool = False
     no_data_warning: float = 45.0
+    receiver_stall_timeout: float = 120.0
+    receiver_retry_initial: float = 1.0
+    receiver_retry_max: float = 30.0
     rf_poll_interval: float = 5.0
     rf_stale_after: float = 20.0
     heartbeat_stale_after: float = 45.0
@@ -56,8 +60,20 @@ class Config:
         if self.web_allowed_networks is not None:
             for network in self.web_allowed_networks:
                 ip_network(network)
-        if self.no_data_warning <= 0:
-            raise ValueError("no_data_warning must be positive")
+        if not math.isfinite(self.no_data_warning) or self.no_data_warning <= 0:
+            raise ValueError("no_data_warning must be finite and positive")
+        if (
+            not math.isfinite(self.receiver_stall_timeout)
+            or self.receiver_stall_timeout <= self.no_data_warning
+        ):
+            raise ValueError("receiver_stall_timeout must be finite and exceed no_data_warning")
+        if (
+            not math.isfinite(self.receiver_retry_initial)
+            or self.receiver_retry_initial <= 0
+            or not math.isfinite(self.receiver_retry_max)
+            or self.receiver_retry_max < self.receiver_retry_initial
+        ):
+            raise ValueError("receiver retry delays must be finite, positive and initial <= max")
         if min(self.capture_segments, self.max_rejected) < 1:
             raise ValueError("retention limits must be positive")
         for days in (self.diagnostic_retention_days, self.failure_retention_days):

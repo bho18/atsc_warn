@@ -306,11 +306,11 @@ def test_live_native_peer_requires_keepalives_on_receiving_port(tmp_path, monkey
     store.close()
 
 
-def test_keepalive_send_failure_unwinds_owned_tuner(tmp_path, monkeypatch, capsys):
+def test_keepalive_send_failure_unwinds_owned_tuner_with_bounded_retry(
+    tmp_path, monkeypatch, capsys
+):
     from contextlib import contextmanager
     from dataclasses import replace
-
-    import pytest
 
     from tests.unit.test_inputs import Device as MockTuner
     from warnbridge import cli
@@ -334,7 +334,7 @@ def test_keepalive_send_failure_unwinds_owned_tuner(tmp_path, monkeypatch, capsy
         port = probe.getsockname()[1]
     cfg = tmp_path / "failed-send.toml"
     cfg.write_text(f'database="{tmp_path}/failed-send.db"\n')
-    with pytest.raises(OSError, match="outbound UDP"):
+    assert (
         cli.run(
             cli.parser().parse_args(
                 [
@@ -346,10 +346,13 @@ def test_keepalive_send_failure_unwinds_owned_tuner(tmp_path, monkeypatch, capsy
                     "--udp-port",
                     str(port),
                     "--duration",
-                    ".01",
+                    ".1",
                 ]
             )
         )
+        == 2
+    )
+    assert "receiver UDP I/O failed" in capsys.readouterr().err
     assert device.lock is None and device.target == "none" and device.channel == "none"
     store = Store(str(tmp_path / "failed-send.db"))
     assert store.receivers()[0]["state"] == "failed"

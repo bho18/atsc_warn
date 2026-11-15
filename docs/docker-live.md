@@ -131,6 +131,50 @@ Then run the `sudo docker compose` pull/up commands above again. A registry dige
 line to follow `edge` updates again. Keep a SQLite backup before an upgrade that changes
 the database schema; changing an image tag does not reverse a database migration.
 
+## Automatic receiver recovery
+
+Install the receiver-recovery update with the normal `pull`/`up -d` commands above.
+There is no schema or Compose-layout change. Standard generated configuration
+needs no change; see the custom warning-timeout exception below.
+
+If reception loses usable transport packets on the configured WARN PID for 120
+seconds, the receiver closes its failed capture session and attempts acquisition
+again. Automatic tuner selection tries the available tuners, so a foreign lock on
+tuner 0 can lead to recovery on tuner 1. A configured `tuner = 0` or `tuner = 1`
+remains restricted to that tuner. Failures that end receiver acquisition or UDP
+reception also retry. RF status-poll errors alone update diagnostics without
+interrupting a continuing WARN feed.
+Busy/unavailable receivers use a delay starting at one second and doubling to a
+maximum thirty seconds. Every acquisition/release respects device ownership locks.
+
+Optional TOML overrides (existing files receive these defaults automatically):
+
+```toml
+receiver_stall_timeout = 120.0
+receiver_retry_initial = 1.0
+receiver_retry_max = 30.0
+```
+
+The stall timeout must exceed `no_data_warning` (default 45 seconds). If an existing
+custom config sets `no_data_warning` to 120 seconds or more, explicitly set a larger
+`receiver_stall_timeout` before updating. Unrelated TV
+traffic and invalid datagrams cannot postpone recovery indefinitely. Continuing
+WARN transport, including Link Tests or alerts without a heartbeat, keeps the
+transport watchdog alive; the UI's heartbeat freshness remains independent.
+Each retry has a fresh UDP socket, decoder and evidence session. No partial message
+is assembled across the reconnect. Archive/quota and socket-bind failures remain
+errors requiring attention, not receiver contention retries.
+
+The archive records `receiver_stalled` health events; logs include `receiver_retry`
+JSON output and the next selected tuner. Receiver health can remain unhealthy
+while waiting for an available tuner; health becomes recent only after a newly
+accepted live heartbeat. Docker's health
+flag itself is not the recovery mechanism.
+
+If control remains unreachable during every keyed cleanup attempt, or a process
+dies abruptly, a remaining hardware lock can still prevent acquisition. The app
+reports cleanup failures and never force-clears a foreign or uncertain lock.
+
 ## Internal network and persistent data
 
 The web server binds the detected private LAN address and checks the actual client

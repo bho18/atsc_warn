@@ -117,7 +117,11 @@ candidate and try the next unlocked tuner; an explicit --tuner choice is never
 changed. Every subsequent write and release is keyed. After acquisition it stops
 the previous target before setting channel, filter and the new target. It uses a
 WARN-only PID filter unless full_multiplex=true was explicitly configured.
-A non-busy startup/network error stops reception instead of trying another tuner.
+A non-busy receiver control/network error ends that acquisition attempt. The
+supervisor retries with bounded backoff; locally validated configuration errors,
+socket-bind and archive failures remain fatal instead of being mistaken for tuner
+contention. Device/control rejections retry. RF status-poll errors alone update
+diagnostics without interrupting a continuing WARN feed.
 
 After capture, inspect the selected tuner's status/target/lock again. Expect the
 owned target/channel stopped and lock released. Confirm Jellyfin still works.
@@ -139,12 +143,35 @@ of the candidate key. If ownership changed, device-side keyed writes must refuse
 no force/unkeyed cleanup or stale restoration follows. Tests mock these outcomes;
 firmware behavior still requires the opt-in local check.
 
-The receiver process performs no in-place automatic reconnect or takeover. Docker
-may restart an exited process, repeating its normal unlocked/owned-lock checks; an
-unhealthy running container is not automatically retuned. After control-network
-failure, cleanup may be impossible; it is reported as an error. SIGKILL/power loss cannot guarantee cleanup.
-The next capture must repeat inspection and refuse a remaining/foreign lock. Have
-an operator investigate ownership; this application never force-clears it. The
+The live listener supervises acquisition attempts. After receiver control/UDP I/O
+failure or 120 seconds without usable payload-bearing TS packets on the configured
+WARN PID, it finalizes the old decoder/session, stops RF polling/keepalives, attempts
+owned cleanup and retries with a fresh socket, session and ownership key. Automatic
+selection rechecks all device tuners; explicit selection stays fixed. Retry delays
+start at one second and double up to thirty seconds, resetting after WARN transport
+activity. SIGINT/SIGTERM interrupts the retry wait. The optional --duration remains
+one overall receive/retry budget; bounded in-flight control calls and cleanup can
+finish after it. Passive `udp` mode does not acquire or restart a tuner.
+
+Unrelated PIDs, unexpected senders, malformed datagrams, transport-error and scrambled
+packets do not refresh the watchdog. Valid Link Tests/alert transport counts even
+without heartbeats; heartbeat freshness is an independent health indicator. The
+45-second no-data warning remains. Defaults can be overridden with
+receiver_stall_timeout, receiver_retry_initial and receiver_retry_max. The stall
+timeout must exceed no_data_warning; a custom no_data_warning of 120 seconds or
+more requires a larger receiver_stall_timeout. Standard generated configuration
+needs no change, and no schema migration is needed. Storage/quota, bind and locally
+validated configuration failures are not receiver retries;
+quota is checked even when a busy receiver produces no chunks.
+
+Cleanup attempts target, channel and lock release with the original key even if an
+earlier cleanup step failed. Original source/storage errors remain primary and
+cleanup failures are reported separately. All mutations remain keyed; no forced
+takeover exists. If every release attempt fails, or after SIGKILL/power loss, an
+unresolved hardware lock can still require operator investigation. Ownership keys
+are not persisted across sessions/processes. A remaining/foreign lock is refused,
+never inferred from a shared host IP. Docker still only restarts exited processes;
+automatic recovery of a running listener is performed by the listener itself. The
 next exclusive DB writer marks previously running sessions abandoned.
 
 ## Source-build and replay Docker alternatives

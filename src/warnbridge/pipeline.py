@@ -106,9 +106,23 @@ class Ingestor:
                 }
             )
 
+    def check_quota(self) -> None:
+        size = storage_usage(self.config.database, self.store.db)["used_bytes"]
+        if size >= self.config.max_database_bytes:
+            self.store.health_event(
+                self.sid,
+                "storage_quota_reached",
+                "Archive limit reached; archive data or increase max_database_bytes",
+            )
+            raise OSError("database quota reached; archive evidence before restarting")
+
     def process(self, chunks: Iterable[Chunk], journal: Journal | None = None) -> dict[str, int]:
         state = "finished"
+        processing_error: BaseException | None = None
         try:
+            # Busy/unreachable tuner attempts may yield no chunks. Their failed
+            # session records must still respect the archive bound before retrying.
+            self.check_quota()
             for chunk in chunks:
                 self.index = chunk.index
                 if chunk.monotonic_ns is not None:
@@ -119,14 +133,7 @@ class Ingestor:
                 if time.monotonic() - self.last_retention >= 60:
                     retain(self.store.db, self.config)
                     self.last_retention = time.monotonic()
-                size = storage_usage(self.config.database, self.store.db)["used_bytes"]
-                if size >= self.config.max_database_bytes:
-                    self.store.health_event(
-                        self.sid,
-                        "storage_quota_reached",
-                        "Archive limit reached; archive data or increase max_database_bytes",
-                    )
-                    raise OSError("database quota reached; archive evidence before restarting")
+                self.check_quota()
                 if chunk.error:
                     self.decoder.counts["input_errors"] += 1
                     for event in self.decoder.break_stream(chunk.error):
@@ -156,8 +163,11 @@ class Ingestor:
                     state = "failed"
                     break
         except BaseException as exc:
+            processing_error = exc
             state = "interrupted" if isinstance(exc, KeyboardInterrupt) else "failed"
             self.store.health_event(self.sid, state, type(exc).__name__)
+            for note in getattr(exc, "__notes__", []):
+                self.store.health_event(self.sid, "source_cleanup_failed", note)
             raise
         finally:
             cleanup_error: BaseException | None = None
@@ -179,6 +189,6 @@ class Ingestor:
             finally:
                 self.store.close()
                 self.writer_lock.close()
-            if cleanup_error is not None:
+            if cleanup_error is not None and processing_error is None:
                 raise cleanup_error
         return dict(self.decoder.counts)

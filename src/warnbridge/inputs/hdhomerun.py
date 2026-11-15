@@ -26,6 +26,10 @@ class TunerBusy(TunerError):
     pass
 
 
+class ReceiverStalled(TunerError):
+    """An owned receive session made no configured-PID progress within its deadline."""
+
+
 def run_command(args: list[str]) -> str:
     try:
         result = subprocess.run(args, capture_output=True, text=True, timeout=8, check=False)
@@ -106,8 +110,8 @@ class Tuner:
                 "set", "target", f"udp://{self.config.return_ip}:{self.config.udp_port}", keyed=True
             )
             return self
-        except BaseException:
-            self.close()
+        except BaseException as exc:
+            self.__exit__(type(exc), exc, exc.__traceback__)
             raise
 
     def send_keepalive(self, sock: socket.socket) -> None:
@@ -128,14 +132,20 @@ class Tuner:
             return
         # Every mutation remains keyed, including cleanup. A foreign takeover causes
         # device refusal; do not then perform unkeyed resets or restore stale settings.
+        # A failed target stop must not skip the other owned cleanup attempts.
+        error: TunerError | None = None
+        names = (["target"] if self.streaming else []) + (["channel"] if self.tuned else [])
         try:
-            if self.streaming:
-                self.command("set", "target", "none", keyed=True)
-            if self.tuned:
-                self.command("set", "channel", "none", keyed=True)
-            self.command("set", "lockkey", "none", keyed=True)
+            for name in [*names, "lockkey"]:
+                try:
+                    self.command("set", name, "none", keyed=True)
+                except TunerError as exc:
+                    if error is None:
+                        error = exc
         finally:
             self.owned = False
+        if error is not None:
+            raise error
 
     def __exit__(
         self,
@@ -143,4 +153,11 @@ class Tuner:
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.close()
+        try:
+            self.close()
+        except TunerError as cleanup_error:
+            if exc is None or isinstance(exc, GeneratorExit):
+                raise
+            # Preserve the primary failure (including fatal storage errors). Notes
+            # contain no key or command arguments and are reported by the supervisor.
+            exc.add_note(f"Owned tuner cleanup also failed: {cleanup_error}")

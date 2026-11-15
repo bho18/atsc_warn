@@ -65,6 +65,14 @@ SQLite stores decoded WARN evidence. **Raw transport recording is off by default
 Routine capture filters PID 0x0911 on the receiver and discards unrelated packets.
 Use --record-raw only for deliberate diagnostics.
 
+Live reception automatically reconnects after 120 seconds without usable packets
+for the configured WARN PID, or after failures that end a receiver acquisition or
+UDP receive attempt. RF status-poll errors alone do not interrupt continuing WARN
+traffic. Automatic tuner selection rechecks all tuners; an explicit tuner choice
+stays fixed. Busy
+devices retry with delays from one to thirty seconds, without force-clearing locks.
+See [receiver recovery](docs/docker-live.md#automatic-receiver-recovery) for settings.
+
 See [the live receiver guide](docs/live-receiver.md) for channel/return-IP settings,
 logging, optional raw diagnostics, and WSL UDP routing. Discovery can fail across
 VLANs/WSL NAT; --host bypasses broadcast. WSL must also have a working UDP return

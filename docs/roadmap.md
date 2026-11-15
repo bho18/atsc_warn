@@ -48,8 +48,9 @@ transport. See evidence.md for exact excerpt counts and provenance. The original
 - RTP, resynchronization, multicast, other tuners and ATSC 3.0.
 - Live web comparison: operator policy, completeness, rate limits, pagination,
   redirect rules and defensible mappings must be established before adding polling.
-- Automatic reconnect/crash-lock recovery: intentionally no force takeover. Retry
-  is a new explicit capture attempt, with full idle/lock checks.
+- Hardware acceptance of the new automatic reconnect/watchdog and tuner failover.
+  Durable crash-lock recovery remains deferred: keys are not persisted across
+  sessions/processes, and no foreign or uncertain lock is force-cleared.
 - Legacy detail embeds at most 100 observations; the new paginated delivery API/UI
   exposes full history. Archive retention/large-scale query tuning remains future work.
 

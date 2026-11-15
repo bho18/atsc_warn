@@ -128,8 +128,18 @@ substituting the Windows LAN IP does not create a UDP forwarding path to WSL.
 After 45 seconds without valid TS data (configurable no_data_warning), a warning
 points to RF lock, PID, return address and WSL routing. It also persists a health
 event. This is a diagnostic warning, not an automatic firmware/firewall/VLAN change
-or proof of a receiver failure. If no data arrives, inspect the tuner RF status
-read-only and verify the chosen address/UDP port using local network diagnostics.
+or proof of a receiver failure. At 120 seconds without usable payload-bearing
+packets on the configured WARN PID, owned `listen`/`capture` reception automatically
+reconnects with a new decoder/session. Unrelated PIDs, rejected datagrams, and
+packets marked with transport errors, scrambling or no payload do not refresh the
+watchdog. It tracks transport activity rather than successful WARN message decoding;
+Link Tests/alert traffic does not need a heartbeat to count. Failures that end a
+receiver acquisition or UDP receive attempt retry with one-to-thirty-second
+backoff; automatic selection rechecks all tuners, explicit selection stays fixed.
+RF status-poll errors alone do not interrupt a continuing WARN feed.
+See [recovery settings and limitations](docker-live.md#automatic-receiver-recovery).
+If reception remains unavailable, inspect the tuner RF status read-only and verify
+the chosen address/UDP port using local network diagnostics.
 
 No hardware, Windows settings, Jellyfin, Caddy, firewall or VLAN was changed or
 contacted by cloud validation. Native discovery/control and WSL return paths still

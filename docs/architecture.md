@@ -75,6 +75,18 @@ The ingestion thread persists snapshots; the API reads them and computes freshne
 without device access. See ui-monitoring.md for threading, freshness and source-aware
 archive/delivery presentation.
 
+Native live reception has an outer supervisor for receiver-specific failures and
+a configured-PID transport watchdog. Each attempt creates a fresh socket, lease,
+Ingestor/session and decoder; old incomplete evidence is finalized before retry.
+The stop event and optional duration budget span all attempts. Bounded interruptible
+backoff retries ordinary ownership-aware selection without force unlock. Raw UDP
+mode remains passive; archive, bind and locally validated configuration errors
+remain fatal. Device/control rejections retry; RF status-poll errors alone do not
+restart a continuing WARN feed. Keyed cleanup attempts all steps, and a cleanup
+error cannot replace a primary storage
+failure and incorrectly turn it into a receiver retry. Heartbeat freshness remains
+independent of usable WARN transport activity.
+
 The alert inbox defaults to the live source group and excludes heartbeat/Link Tests.
 Non-Link-Test CMAC is included even when its status/enum is unknown, so unrecognized
 alert content is available for review. The heartbeat indicator uses a separate

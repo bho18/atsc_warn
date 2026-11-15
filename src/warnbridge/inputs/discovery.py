@@ -170,7 +170,10 @@ def open_receiver(config: Config, runner: Runner = run_command) -> Iterator[Tune
             continue
         try:
             yield tuner
-        finally:
-            tuner.close()
+        except BaseException as exc:
+            tuner.__exit__(type(exc), exc, exc.__traceback__)
+            raise
+        else:
+            tuner.__exit__(None, None, None)
         return
     raise TunerBusy("all tuners have an ownership lock or unknown lock state; retry when unlocked")

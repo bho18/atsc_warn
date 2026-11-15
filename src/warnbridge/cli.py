@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import signal
 import socket
 import sqlite3
@@ -14,7 +15,7 @@ from typing import Any
 
 from warnbridge.config import Config, load_config
 from warnbridge.inputs.discovery import discover, inspect_device, open_receiver, select_device
-from warnbridge.inputs.hdhomerun import KEEPALIVE_PORT, Tuner, TunerError
+from warnbridge.inputs.hdhomerun import KEEPALIVE_PORT, ReceiverStalled, Tuner, TunerError
 from warnbridge.inputs.health import ReceiverMonitor
 from warnbridge.inputs.streams import Chunk, Journal, file_chunks, journal_chunks, udp_chunks
 from warnbridge.pipeline import Ingestor
@@ -120,135 +121,219 @@ def json_line(value: dict[str, Any]) -> None:
     print(json.dumps(value, ensure_ascii=True), flush=True)
 
 
+def _live_once(
+    args: argparse.Namespace,
+    config: Config,
+    stop: Event,
+    duration: float | None,
+    received: Event,
+) -> int:
+    """One lease and decoder lifetime; storage and bind failures remain fatal."""
+    deadline = None if duration is None else time.monotonic() + duration
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.bind((config.udp_bind, config.udp_port))  # bind before any tuner mutation
+        source = "live_udp" if args.command == "udp" else "live_hdhomerun"
+        ingestor = Ingestor(
+            config,
+            source,
+            "pending tuner selection"
+            if args.command != "udp"
+            else f"udp:{config.udp_bind}:{config.udp_port}",
+            emit=json_line,
+        )
+
+        def expired() -> bool:
+            return stop.is_set() or (deadline is not None and time.monotonic() >= deadline)
+
+        def controlled_chunks() -> Iterator[Chunk]:
+            if expired():
+                return
+            owner = nullcontext(None) if args.command == "udp" else open_receiver(config)
+            with owner as tuner:
+                active = tuner.config if tuner else config
+                if expired():
+                    return
+                if tuner:
+                    identity = f"{active.receiver_host}:tuner{active.tuner}"
+                    with ingestor.store.db:
+                        ingestor.store.db.execute(
+                            "UPDATE sessions SET identity=? WHERE id=?",
+                            (identity, ingestor.sid),
+                        )
+                    snapshot = tuner.inspect()
+                    ingestor.store.health_event(
+                        ingestor.sid, "owned_stream_started", json.dumps(snapshot)
+                    )
+                    status = {
+                        "type": "receiver",
+                        "host": active.receiver_host,
+                        "tuner": active.tuner,
+                        "channel": active.channel,
+                        "pid": active.pid,
+                        "return_ip": active.return_ip,
+                        "udp_port": active.udp_port,
+                        "raw_recording": config.record_raw,
+                        "keepalive_port": KEEPALIVE_PORT,
+                        "status": snapshot,
+                    }
+                    json_line(status)
+                    stream_label = (
+                        "full multiplex" if active.full_multiplex else f"PID 0x{active.pid:04X}"
+                    )
+                    print(
+                        f"Listening on {active.return_ip}:{active.udp_port}, "
+                        f"tuner {active.tuner}, {active.channel}, {stream_label}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                monitor_context = (
+                    ReceiverMonitor(lambda: tuner.command("get", "status"), config.rf_poll_interval)
+                    if tuner
+                    else nullcontext(None)
+                )
+                with monitor_context as monitor:
+
+                    def persist_sample() -> None:
+                        sample = monitor.latest() if monitor else None
+                        if sample is not None:
+                            ingestor.store.record_receiver_status(
+                                ingestor.sid,
+                                str(active.receiver_host),
+                                int(active.tuner or 0),
+                                sample.checked_at,
+                                sample.raw_status,
+                                sample.error,
+                            )
+
+                    def keepalive() -> None:
+                        if tuner is not None:
+                            tuner.send_keepalive(sock)
+
+                    def receive() -> Iterator[Chunk]:
+                        remaining = (
+                            None if deadline is None else max(0.0, deadline - time.monotonic())
+                        )
+                        try:
+                            yield from udp_chunks(
+                                sock,
+                                stop,
+                                expected_host=active.receiver_host,
+                                duration=remaining,
+                                keepalive=keepalive if tuner is not None else None,
+                            )
+                        except OSError as exc:
+                            if tuner is None:
+                                raise
+                            # Classify only socket I/O here, never archive/quota/bind errors.
+                            raise TunerError(
+                                f"receiver UDP I/O failed: {type(exc).__name__}"
+                            ) from None
+
+                    try:
+                        last_data = last_warn_pid = time.monotonic()
+                        warned = False
+                        for chunk in receive():
+                            if expired():
+                                return
+                            persist_sample()
+                            now = time.monotonic()
+                            if chunk.data and not chunk.error:
+                                last_data, warned = now, False
+                                # udp_chunks already checked sender, packet alignment and sync.
+                                # Other PIDs (including null padding) cannot hide a lost WARN feed.
+                                if any(
+                                    not chunk.data[i + 1] & 0x80  # transport error indicator
+                                    and not chunk.data[i + 3] & 0xC0  # scrambling
+                                    and chunk.data[i + 3] & 0x10  # payload present
+                                    and ((chunk.data[i + 1] & 0x1F) << 8) | chunk.data[i + 2]
+                                    == config.pid
+                                    for i in range(0, len(chunk.data) - 187, 188)
+                                ):
+                                    last_warn_pid = now
+                                    received.set()
+                            if not warned and now - last_data >= config.no_data_warning:
+                                detail = (
+                                    "No UDP TS data received: check RF lock, PID, "
+                                    "and return IP/port. "
+                                    "In WSL, check Windows/Hyper-V inbound filtering "
+                                    "and inter-VLAN UDP routing; direct-IP control alone "
+                                    "does not prove UDP works."
+                                )
+                                print(detail, file=sys.stderr, flush=True)
+                                ingestor.store.health_event(ingestor.sid, "no_udp_data", detail)
+                                warned = True
+                            # Retain this chunk's evidence before unwinding a stalled session.
+                            yield chunk
+                            if (
+                                tuner is not None
+                                and now - last_warn_pid >= config.receiver_stall_timeout
+                            ):
+                                detail = (
+                                    f"No PID 0x{config.pid:04X} transport packets for "
+                                    f"{config.receiver_stall_timeout:g}s; reconnecting receiver"
+                                )
+                                ingestor.store.health_event(
+                                    ingestor.sid, "receiver_stalled", detail
+                                )
+                                raise ReceiverStalled(detail)
+                    finally:
+                        persist_sample()
+
+        # Each retry gets a separate journal/session/decoder and a fresh UDP socket.
+        # Incomplete assemblies are finalized before any new lease can be acquired.
+        journal = (
+            Journal(config.capture_dir, config.capture_segment_bytes, config.capture_segments)
+            if config.record_raw
+            else None
+        )
+        summary = ingestor.process(controlled_chunks(), journal)
+        json_line({"type": "summary", "session_id": ingestor.sid, "counts": summary})
+        return int(ingestor.decoder.failed)
+
+
 def live(args: argparse.Namespace, config: Config) -> int:
-    if args.duration is not None and args.duration <= 0:
-        raise ValueError("duration must be positive")
+    if args.duration is not None and (not math.isfinite(args.duration) or args.duration <= 0):
+        raise ValueError("duration must be finite and positive")
     if args.command != "udp" and not config.channel:
         raise ValueError("choose a physical RF channel with --channel 7 (or configure channel)")
     stop = Event()
     previous = {
         sig: signal.signal(sig, lambda *_: stop.set()) for sig in (signal.SIGINT, signal.SIGTERM)
     }
+    deadline = None if args.duration is None else time.monotonic() + args.duration
+    delay = config.receiver_retry_initial
+    last_error: TunerError | None = None
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.bind((config.udp_bind, config.udp_port))  # bind before any tuner mutation
-            source = "live_udp" if args.command == "udp" else "live_hdhomerun"
-            ingestor = Ingestor(
-                config,
-                source,
-                "pending tuner selection"
-                if args.command != "udp"
-                else f"udp:{config.udp_bind}:{config.udp_port}",
-                emit=json_line,
-            )
-
-            def controlled_chunks() -> Iterator[Chunk]:
-                owner = nullcontext(None) if args.command == "udp" else open_receiver(config)
-                with owner as tuner:
-                    active = tuner.config if tuner else config
-                    if stop.is_set():
-                        return
-                    if tuner:
-                        identity = f"{active.receiver_host}:tuner{active.tuner}"
-                        with ingestor.store.db:
-                            ingestor.store.db.execute(
-                                "UPDATE sessions SET identity=? WHERE id=?",
-                                (identity, ingestor.sid),
-                            )
-                        snapshot = tuner.inspect()
-                        ingestor.store.health_event(
-                            ingestor.sid, "owned_stream_started", json.dumps(snapshot)
-                        )
-                        status = {
-                            "type": "receiver",
-                            "host": active.receiver_host,
-                            "tuner": active.tuner,
-                            "channel": active.channel,
-                            "pid": active.pid,
-                            "return_ip": active.return_ip,
-                            "udp_port": active.udp_port,
-                            "raw_recording": config.record_raw,
-                            "keepalive_port": KEEPALIVE_PORT,
-                            "status": snapshot,
-                        }
-                        json_line(status)
-                        stream_label = (
-                            "full multiplex" if active.full_multiplex else f"PID 0x{active.pid:04X}"
-                        )
-                        print(
-                            f"Listening on {active.return_ip}:{active.udp_port}, "
-                            f"tuner {active.tuner}, {active.channel}, "
-                            f"{stream_label}",
-                            file=sys.stderr,
-                            flush=True,
-                        )
-                    monitor_context = (
-                        ReceiverMonitor(
-                            lambda: tuner.command("get", "status"), config.rf_poll_interval
-                        )
-                        if tuner
-                        else nullcontext(None)
-                    )
-                    with monitor_context as monitor:
-
-                        def persist_sample() -> None:
-                            sample = monitor.latest() if monitor else None
-                            if sample is not None:
-                                ingestor.store.record_receiver_status(
-                                    ingestor.sid,
-                                    str(active.receiver_host),
-                                    int(active.tuner or 0),
-                                    sample.checked_at,
-                                    sample.raw_status,
-                                    sample.error,
-                                )
-
-                        try:
-                            last_data, warned = time.monotonic(), False
-
-                            def keepalive() -> None:
-                                if tuner is not None:
-                                    tuner.send_keepalive(sock)
-
-                            for chunk in udp_chunks(
-                                sock,
-                                stop,
-                                expected_host=active.receiver_host,
-                                duration=args.duration,
-                                keepalive=keepalive if tuner is not None else None,
-                            ):
-                                persist_sample()
-                                if chunk.data and not chunk.error:
-                                    last_data, warned = time.monotonic(), False
-                                if (
-                                    not warned
-                                    and time.monotonic() - last_data >= config.no_data_warning
-                                ):
-                                    detail = (
-                                        "No UDP TS data received: check RF lock, PID, "
-                                        "and return IP/port. "
-                                        "In WSL, check Windows/Hyper-V inbound filtering "
-                                        "and inter-VLAN "
-                                        "UDP routing; direct-IP control alone "
-                                        "does not prove UDP works."
-                                    )
-                                    print(detail, file=sys.stderr, flush=True)
-                                    ingestor.store.health_event(ingestor.sid, "no_udp_data", detail)
-                                    warned = True
-                                yield chunk
-
-                        finally:
-                            persist_sample()
-
-            # No raw TS/datagram files by default. Only decoded WARN evidence is persisted.
-            journal = (
-                Journal(config.capture_dir, config.capture_segment_bytes, config.capture_segments)
-                if config.record_raw
-                else None
-            )
-            summary = ingestor.process(controlled_chunks(), journal)
-            json_line({"type": "summary", "session_id": ingestor.sid, "counts": summary})
-            return int(ingestor.decoder.failed)
+        while not stop.is_set():
+            remaining = None if deadline is None else deadline - time.monotonic()
+            if remaining is not None and remaining <= 0:
+                return 2 if last_error is not None else 0
+            received = Event()
+            try:
+                return _live_once(args, config, stop, remaining, received)
+            except TunerError as exc:
+                if args.command == "udp":
+                    raise
+                last_error = exc
+                for note in getattr(exc, "__notes__", []):
+                    print(note, file=sys.stderr, flush=True)
+                if stop.is_set():
+                    return 0
+                if received.is_set():
+                    delay = config.receiver_retry_initial
+                wait = delay if deadline is None else min(delay, deadline - time.monotonic())
+                if wait <= 0:
+                    return 2
+                json_line({"type": "receiver_retry", "reason": str(exc), "retry_in_seconds": wait})
+                print(
+                    f"Receiver unavailable: {exc}; retrying in {wait:g}s",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                if stop.wait(wait):
+                    return 0
+                delay = min(delay * 2, config.receiver_retry_max)
+        return 0
     finally:
         for sig, handler in previous.items():
             signal.signal(sig, handler)
@@ -327,6 +412,8 @@ def main() -> None:
         code = run(parser().parse_args())
     except (ValueError, OSError, TunerError, sqlite3.Error) as exc:
         print(f"warnbridge: {exc}", file=sys.stderr)
+        for note in getattr(exc, "__notes__", []):
+            print(f"warnbridge: {note}", file=sys.stderr)
         code = 2
     except KeyboardInterrupt:
         code = 130

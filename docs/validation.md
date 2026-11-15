@@ -765,3 +765,44 @@ registry pull verification are performed through the existing container workflow
   pre-update backups retain any older diagnostics the operator wants to keep.
   Actual long-running hardware behavior and disk-exhaustion recovery remain
   unverified; live cleanup does not VACUUM or reclaim physical file size directly.
+
+## Receiver recovery after transport loss (November 15, 2026)
+
+- User-provided diagnostics showed an unhealthy receiver process still running
+  while both physical tuners were idle and unlocked. A manual receiver restart
+  acquired tuner 0 and decoded new CMAC Link Tests. This supports a missing
+  in-process recovery path; the original interruption and any Jellyfin takeover
+  were not established by those snapshots. Private diagnostic captures are not
+  included in source or fixtures.
+- `./scripts/validate.sh` passed: **252 tests**, Ruff lint/format, strict mypy
+  (23 source files), and the independent reconstructed replay (four WARN packets,
+  two messages/two CRC passes, zero rejections). The existing Starlette/httpx
+  deprecation warning remains.
+- New offline regressions exercise loss followed by a foreign lock on tuner 0
+  and recovery on tuner 1, both tuners idle, all tuners busy then released, pinned
+  tuner selection, fresh sockets/sessions/decoders, incomplete-message isolation,
+  unrelated-PID/invalid-sender/transport-error traffic, Link Tests without fresh
+  heartbeats, exponential retry bounds, overall duration and SIGTERM during retry.
+  Cleanup retains the original ownership key for every attempted write, continues
+  after a failed stop operation, and cannot turn a primary quota/SQLite failure
+  into a retriable receiver failure. Initial quota exhaustion stops before tuner
+  acquisition, including when every tuner is busy. Bind errors remain fatal and
+  passive UDP mode does not acquire or reconnect hardware.
+- An actual CLI replay followed by a temporary loopback-only Uvicorn API server
+  confirmed two messages/deliveries/observations, exact raw TS downloads, a finished
+  replay session and no live-source messages. Health stayed `waiting` with no live
+  heartbeat/reception time and RF `not_checked`; replay does not impersonate live
+  receiver health. The process and temporary archive were removed after the check.
+- The default transport watchdog is 120 seconds and retries use one-to-thirty-
+  second backoff. It tracks configured-PID payload activity after sender/framing
+  and basic TS header checks, not successful message decoding. Heartbeat health
+  remains independent. RF status-read errors alone do not interrupt good traffic.
+  Standard generated configuration needs no changes; a custom `no_data_warning`
+  of at least 120 seconds needs a larger `receiver_stall_timeout`.
+- No schema, dependency or Compose-layout change is required. No user LAN or
+  physical tuner was contacted. Real HDHomeRun/Jellyfin coexistence and recovery
+  still require local acceptance. If every keyed cleanup operation fails, or the
+  process is killed abruptly, a remaining hardware lock may require operator
+  investigation; ownership keys are not persisted across attempts. Bounded device
+  calls/cleanup can finish after the optional duration budget. Image publication
+  and registry pull are verified separately from these offline results.

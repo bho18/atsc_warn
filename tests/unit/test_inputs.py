@@ -141,11 +141,52 @@ def test_unconfirmed_unlocked_state_is_refused(lock_state):
 def test_foreign_takeover_during_exit_no_unkeyed_cleanup():
     device = Device()
     with pytest.raises(TunerError):
-        with Tuner(config(), device):
+        with Tuner(config(), device) as tuner:
+            key = tuner.key
             device.lock = "foreign"
     assert device.lock == "foreign"
     assert device.target == "udp://192.0.2.20:5000"
-    assert not any(a[-2:] == ["/tuner1/lockkey", "none"] for a in device.calls)
+    assert device.channel == "auto:7"
+    cleanup = device.calls[-3:]
+    assert [a[-2] for a in cleanup] == ["/tuner1/target", "/tuner1/channel", "/tuner1/lockkey"]
+    assert all(a[2:4] == ["key", key] and a[-1] == "none" for a in cleanup)
+    assert not any("force" in a for a in device.calls)
+
+
+def test_failed_target_cleanup_still_releases_own_lock():
+    device = Device()
+    failing = False
+
+    def runner(args):
+        if failing and args[-2:] == ["/tuner1/target", "none"]:
+            raise TunerError("synthetic target-stop timeout")
+        return device(args)
+
+    with pytest.raises(TunerError, match="target-stop"):
+        with Tuner(config(), runner):
+            failing = True
+    assert device.lock is None and device.channel == "none"
+    # The next ordinary acquisition succeeds without a forced unlock.
+    with Tuner(config(), device):
+        assert device.lock is not None
+    assert device.lock is None and device.target == "none"
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"receiver_stall_timeout": 45},
+        {"receiver_stall_timeout": float("nan")},
+        {"receiver_stall_timeout": float("inf")},
+        {"receiver_retry_initial": 0},
+        {"receiver_retry_initial": float("nan")},
+        {"receiver_retry_initial": 5, "receiver_retry_max": 2},
+        {"receiver_retry_max": float("inf")},
+    ],
+)
+def test_receiver_recovery_requires_finite_ordered_time_limits(settings):
+    with pytest.raises(ValueError):
+        Config(**settings)
 
 
 def test_partial_startup_cleans_owned_channel():

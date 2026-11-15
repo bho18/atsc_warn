@@ -10,6 +10,9 @@ udp_port = 5000
 record_raw = false
 full_multiplex = false
 no_data_warning = 45.0
+receiver_stall_timeout = 120.0
+receiver_retry_initial = 1.0
+receiver_retry_max = 30.0
 rf_poll_interval = 5.0
 rf_stale_after = 20.0
 
