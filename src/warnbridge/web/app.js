@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 let offset = 0, mode = 'alerts', view = 'deliveries', timezone = 'America/Chicago';
 let failureOffset = 0, cancellationOffset = 0;
-let refreshPending = false;
+let refreshPending = false, healthPending = false;
 let purgePreview = null;
 let refreshSerial = 0, inspectSerial = 0, historySerial = 0;
 let selectedMessage = null, historyOffset = 0, selectedDelivery = null, selectedAlertState = '';
@@ -15,7 +15,14 @@ async function get(path, format = 'json') {
     const r = await fetch(path,{signal:controller.signal});
     if (!r.ok) {const error=new Error(`Local API: ${r.status}`);error.status=r.status;throw error;}
     return format==='text' ? await r.text() : await r.json();
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('Local API request timed out');
+    throw error;
   } finally { clearTimeout(deadline); }
+}
+function setPanelError(id, message = '') {
+  $(id).textContent = message;
+  $(id).hidden = !message;
 }
 function stamp(value) {
   if (!value) return 'Arrival unknown';
@@ -281,6 +288,7 @@ async function loadHistory() {
 }
 async function inspect(id, delivery = null, resetHistory = true) {
   const serial = ++inspectSerial;
+  setPanelError('inspectionError');
   selectedMessage=id;selectedDelivery=delivery;
   if (resetHistory) historyOffset=0;
   try {
@@ -299,39 +307,50 @@ async function inspect(id, delivery = null, resetHistory = true) {
     renderAlertDetail(detail);
     $('detail').hidden=false;
     await loadHistory();
-    if (resetHistory) $('detail').scrollIntoView({behavior:'smooth',block:'start'});
-  } catch (error) { $('connection').textContent=error.message; }
+    if (resetHistory && serial===inspectSerial) $('detail').scrollIntoView({behavior:'smooth',block:'start'});
+  } catch (error) {
+    if (serial===inspectSerial) setPanelError('inspectionError',`Message inspector unavailable · ${error.message}`);
+  }
 }
 async function refreshInspection() {
   const mid=selectedMessage, serial=inspectSerial;
-  if(!mid) return;
-  const item=await get(`/api/v1/messages/${mid}?${query()}`);
-  if(mid!==selectedMessage || serial!==inspectSerial) return;
-  const signature=inspectionState(item);
-  if(signature!==selectedAlertState) {
-    const language=$('alertLanguage')?.value, evidenceOpen=$('evidence').open;
-    renderAlertDetail(item);
-    const select=$('alertLanguage');
-    if(select && language!==undefined && Number(language)<select.options.length) {select.value=language;select.onchange();}
-    $('evidence').open=evidenceOpen;
-  }
-  $('detailStatus').textContent=`${item.classification.replaceAll('_',' ')} · ${item.delivery_count} deliveries in this source filter · ${selectedDelivery ? `selected #${selectedDelivery.id}` : 'grouped content'}${item.conflict ? ' · IDENTITY CONFLICT' : ''}`;
-  await loadHistory();
-}
-async function refresh(force = false) {
-  if (refreshPending && !force) return;
-  refreshPending=true;
-  const serial=++refreshSerial;
+  if(!mid || $('detail').hidden) return;
   try {
-    const params=query({limit:20,offset});
-    if ($('classification').value) params.set('classification',$('classification').value);
-    if (mode==='alerts') {params.set('source',$('source').value || 'all');if ($('alertStatus').value) params.set('status',$('alertStatus').value);if ($('alertLifecycle').value) params.set('lifecycle',$('alertLifecycle').value);params.delete('classification');}
-    const endpoint=mode==='alerts' ? 'alerts' : view==='deliveries' ? 'deliveries' : 'messages';
-    const cancelParams=query({cancellations:true,limit:10,offset:cancellationOffset});
-    if(!cancelParams.has('source'))cancelParams.set('source','all');
-    const [health,metrics,data,failures,cancellations]=await Promise.all([get('/api/v1/health'),get('/api/v1/metrics'),get(`/api/v1/${endpoint}?${params}`),get(`/api/v1/diagnostics?limit=10&offset=${failureOffset}`), mode==='alerts' ? get(`/api/v1/alerts?${cancelParams}`) : Promise.resolve(null)]);
-    if (serial!==refreshSerial) return;
-    if(offset && offset>=data.total) {offset=0;refreshPending=false;await refresh(true);return;}
+    const item=await get(`/api/v1/messages/${mid}?${query()}`);
+    if(serial!==inspectSerial) return;
+    const signature=inspectionState(item);
+    if(signature!==selectedAlertState) {
+      const language=$('alertLanguage')?.value, evidenceOpen=$('evidence').open;
+      renderAlertDetail(item);
+      const select=$('alertLanguage');
+      if(select && language!==undefined && Number(language)<select.options.length) {select.value=language;select.onchange();}
+      $('evidence').open=evidenceOpen;
+    }
+    $('detailStatus').textContent=`${item.classification.replaceAll('_',' ')} · ${item.delivery_count} deliveries in this source filter · ${selectedDelivery ? `selected #${selectedDelivery.id}` : 'grouped content'}${item.conflict ? ' · IDENTITY CONFLICT' : ''}`;
+    await loadHistory();
+    if(serial===inspectSerial) setPanelError('inspectionError');
+  } catch (error) {
+    if(serial!==inspectSerial) return;
+    if(error.status===404) {
+      closeInspection();
+      setPanelError('inspectionError','Selected record is no longer retained');
+    } else setPanelError('inspectionError',`Message inspector unavailable · ${error.message}`);
+  }
+}
+function closeInspection() {
+  selectedMessage=null;
+  ++inspectSerial;
+  ++historySerial;
+  window.WarnBridgeMap.clear();
+  $('detail').hidden=true;
+  setPanelError('inspectionError');
+}
+async function refreshHealth() {
+  if (healthPending) return;
+  healthPending=true;
+  try {
+    const health=await get('/api/v1/health');
+    const timezoneChanged=timezone!==health.display_timezone;
     timezone=health.display_timezone;
     $('storageNotice').hidden=!health.storage || health.storage.state==='ok';
     if(health.storage && health.storage.state!=='ok') $('storageNotice').textContent=`Archive ${health.storage.state==='full' ? 'limit reached — reception stops' : 'nearing its limit'}: ${Math.round(health.storage.used_bytes/1048576)} of ${Math.round(health.storage.limit_bytes/1048576)} MiB. Archive data or increase the configured archive limit.`;
@@ -340,19 +359,26 @@ async function refresh(force = false) {
     renderRF(health);
     renderHeartbeat(health.connection);
     observation('linktest','linkSource',health.last_observed.link_test);
-    $('countLabel').textContent=mode==='alerts' ? `ALERTS · ${$('source').value==='live' ? 'LIVE' : 'FILTERED'}` : 'ARCHIVE TOTAL';
-    $('count').textContent=mode==='alerts' ? data.total : `${metrics.messages} contents`;
-    $('failureCount').textContent=`${metrics.deliveries} deliveries · ${metrics.retained_rejections} retained failures`;
-    if(failureOffset && failureOffset>=failures.total) {failureOffset=0;refreshPending=false;await refresh(true);return;}
-    renderFailures(failures);
-    if(cancellations)renderCancellations(cancellations);
-    $('sessions').textContent=JSON.stringify(metrics.sessions,null,2);
+    $('connection').textContent='Local archive connected · status refreshes every 5 seconds';
+    if (timezoneChanged) refresh(true);
+  } catch (error) {
+    $('connection').textContent=`Disconnected · ${error.message}`;
+    $('rf').textContent='Status unavailable';
+    $('rf').className='state-warning';
+    $('rfSignal').textContent='Cannot refresh receiver status';
+    heartbeatOnline=false;
+    renderHeartbeat();
+  } finally { healthPending=false; }
+}
+function renderArchive(data) {
+  if (mode==='alerts') {
+    $('count').textContent=data.total;
+    renderAlerts(data);
+  } else {
     $('messages').replaceChildren();
-    if (mode==='alerts') renderAlerts(data);
-    $('viewHelp').textContent=mode==='alerts' ? 'Received messages and their current status. Heartbeats and Link Tests are in Diagnostics.' : view==='deliveries' ? 'Every reception gets a row, including repeated heartbeats and Link Tests.' : 'Identical content is grouped. Repeated broadcasts increase the delivery count; heartbeat content is constant.';
     $('timeHeading').textContent=view==='deliveries' ? 'Received / source' : 'Last receipt / source';
     $('countHeading').textContent=view==='deliveries' ? 'Delivery' : 'Deliveries';
-    for (const item of mode==='diagnostics' ? data.items : []) {
+    for (const item of data.items) {
       const row=document.createElement('tr');
       const delivery=view==='deliveries';
       messageCell(row,item,delivery ? item : null);
@@ -366,26 +392,79 @@ async function refresh(force = false) {
       $('messages').append(row);
     }
     if (!data.items.length) {const row=document.createElement('tr'),td=cell(row,'No matching messages yet.');td.colSpan=5;$('messages').append(row);}
-    $('page').textContent=`${data.total ? offset+1 : 0}–${Math.min(offset+20,data.total)} of ${data.total} ${mode==='alerts' ? 'alert contents' : view==='deliveries' ? 'deliveries' : 'contents'}`;
-    $('previous').disabled=offset===0;
-    $('next').disabled=offset+20>=data.total;
-    $('connection').textContent='Local archive connected · status refreshes every 5 seconds';
-    if (!$('detail').hidden) {
-      try {await refreshInspection();}
-      catch(error) {
-        if(error.status!==404)throw error;
-        selectedMessage=null;++inspectSerial;++historySerial;window.WarnBridgeMap.clear();$('detail').hidden=true;
-        $('connection').textContent='Selected record is no longer retained · local archive connected';
-      }
-    }
+  }
+  $('page').textContent=`${data.total ? offset+1 : 0}–${Math.min(offset+20,data.total)} of ${data.total} ${mode==='alerts' ? 'alert contents' : view==='deliveries' ? 'deliveries' : 'contents'}`;
+  $('previous').disabled=offset===0;
+  $('next').disabled=offset+20>=data.total;
+}
+async function refreshPanel(path, serial, render, onError) {
+  try {
+    const data=await get(path);
+    if (serial===refreshSerial) render(data);
   } catch (error) {
-    if (serial===refreshSerial) {
-      $('connection').textContent=`Disconnected · ${error.message}`;
-      $('rf').textContent='Status unavailable';
-      $('rf').className='state-warning';
-      $('rfSignal').textContent='Cannot refresh receiver status';
-      heartbeatOnline=false;renderHeartbeat();
-    }
+    if (serial===refreshSerial) onError(error);
+  }
+}
+async function refresh(force = false) {
+  if (refreshPending && !force) return;
+  refreshPending=true;
+  const serial=++refreshSerial;
+  const alerts=mode==='alerts';
+  const params=query({limit:20,offset});
+  if (alerts) {
+    params.set('source',$('source').value || 'all');
+    if ($('alertStatus').value) params.set('status',$('alertStatus').value);
+    if ($('alertLifecycle').value) params.set('lifecycle',$('alertLifecycle').value);
+  } else if ($('classification').value) params.set('classification',$('classification').value);
+  const endpoint=alerts ? 'alerts' : view==='deliveries' ? 'deliveries' : 'messages';
+  $('viewHelp').textContent=alerts ? 'Received messages and their current status. Heartbeats and Link Tests are in Diagnostics.' : view==='deliveries' ? 'Every reception gets a row, including repeated heartbeats and Link Tests.' : 'Identical content is grouped. Repeated broadcasts increase the delivery count; heartbeat content is constant.';
+  const countLabel=alerts ? `ALERTS · ${$('source').value==='live' ? 'LIVE' : 'FILTERED'}` : 'ARCHIVE TOTAL';
+  if ($('countLabel').textContent!==countLabel) $('count').textContent='—';
+  $('countLabel').textContent=countLabel;
+  const cancelParams=query({cancellations:true,limit:10,offset:cancellationOffset});
+  if (!cancelParams.has('source')) cancelParams.set('source','all');
+  try {
+    await Promise.all([
+      refreshPanel(`/api/v1/${endpoint}?${params}`,serial,data=>{
+        if (offset && offset>=data.total) { offset=0;refresh(true);return; }
+        setPanelError('archiveError');
+        renderArchive(data);
+      },error=>{
+        setPanelError('archiveError',`${alerts ? 'Alert inbox' : 'Diagnostic archive'} unavailable · ${error.message}`);
+        $(alerts ? 'alertCards' : 'messages').replaceChildren();
+        if (alerts) $('count').textContent='—';
+        $('page').textContent='';
+        $('previous').disabled=offset===0;
+        $('next').disabled=true;
+      }),
+      refreshPanel('/api/v1/metrics',serial,metrics=>{
+        if (!alerts) $('count').textContent=`${metrics.messages} contents`;
+        $('failureCount').textContent=`${metrics.deliveries} deliveries · ${metrics.retained_rejections} retained failures`;
+        $('sessions').textContent=JSON.stringify(metrics.sessions,null,2);
+      },error=>{
+        if (!alerts) $('count').textContent='—';
+        $('failureCount').textContent='Archive totals unavailable';
+        $('sessions').textContent=`Receiver sessions unavailable · ${error.message}`;
+      }),
+      refreshPanel(`/api/v1/diagnostics?limit=10&offset=${failureOffset}`,serial,failures=>{
+        if (failureOffset && failureOffset>=failures.total) { failureOffset=0;refresh(true);return; }
+        setPanelError('failureError');
+        renderFailures(failures);
+      },error=>setPanelError('failureError',`Retained failures unavailable · ${error.message}`)),
+      alerts ? refreshPanel(`/api/v1/alerts?${cancelParams}`,serial,cancellations=>{
+        if (cancellationOffset && cancellationOffset>=cancellations.total) { cancellationOffset=0;refresh(true);return; }
+        setPanelError('cancellationError');
+        renderCancellations(cancellations);
+      },error=>{
+        $('cancellationSummary').textContent='Cancellation history · unavailable';
+        setPanelError('cancellationError',`Cancellation history unavailable · ${error.message}`);
+        $('cancellationItems').replaceChildren();
+        $('cancellationPage').textContent='';
+        $('cancellationPrevious').disabled=cancellationOffset===0;
+        $('cancellationNext').disabled=true;
+      }) : null,
+      refreshInspection()
+    ]);
   } finally { if (serial===refreshSerial) refreshPending=false; }
 }
 
@@ -442,18 +521,29 @@ function changeView(next) {
 }
 $('deliveriesTab').onclick=()=>changeView('deliveries');
 $('contentTab').onclick=()=>changeView('content');
-$('refresh').onclick=()=>refresh(true);
+function refreshAll(force = false) {refreshHealth();refresh(force);}
+$('refresh').onclick=()=>refreshAll(true);
 $('failureCount').onclick=()=>{$('failurePanel').open=true;$('failurePanel').scrollIntoView({behavior:'smooth'});};
 for(const [id,delta] of [['failurePrevious',-10],['failureNext',10]]) $(id).onclick=()=>{failureOffset=Math.max(0,failureOffset+delta);refresh(true);};
 for(const [id,delta] of [['cancellationPrevious',-10],['cancellationNext',10]]) $(id).onclick=()=>{cancellationOffset=Math.max(0,cancellationOffset+delta);refresh(true);};
-for (const id of ['source','classification','alertStatus','alertLifecycle']) $(id).onchange=()=>{offset=0;cancellationOffset=0;selectedMessage=null;++inspectSerial;++historySerial;window.WarnBridgeMap.clear();$('detail').hidden=true;refresh(true);};
+for (const id of ['source','classification','alertStatus','alertLifecycle']) $(id).onchange=()=>{offset=0;cancellationOffset=0;closeInspection();refresh(true);};
 $('previous').onclick=()=>{offset=Math.max(0,offset-20);refresh(true);};
 $('next').onclick=()=>{offset+=20;refresh(true);};
-$('historyPrevious').onclick=()=>{historyOffset=Math.max(0,historyOffset-10);loadHistory().catch(e=>{$('connection').textContent=e.message;});};
-$('historyNext').onclick=()=>{historyOffset+=10;loadHistory().catch(e=>{$('connection').textContent=e.message;});};
-$('close').onclick=()=>{selectedMessage=null;++inspectSerial;++historySerial;window.WarnBridgeMap.clear();$('detail').hidden=true;};
+async function changeHistoryPage(delta) {
+  const serial=inspectSerial;
+  historyOffset=Math.max(0,historyOffset+delta);
+  try {
+    await loadHistory();
+    if (serial===inspectSerial) setPanelError('inspectionError');
+  } catch (error) {
+    if (serial===inspectSerial) setPanelError('inspectionError',`Delivery history unavailable · ${error.message}`);
+  }
+}
+$('historyPrevious').onclick=()=>changeHistoryPage(-10);
+$('historyNext').onclick=()=>changeHistoryPage(10);
+$('close').onclick=closeInspection;
 function changeMode(next) {
-  mode=next;offset=0;selectedMessage=null;++inspectSerial;++historySerial;window.WarnBridgeMap.clear();$('detail').hidden=true;
+  mode=next;offset=0;closeInspection();setPanelError('archiveError');
   $('alertsTab').setAttribute('aria-selected',String(mode==='alerts'));
   $('diagnosticsTab').setAttribute('aria-selected',String(mode==='diagnostics'));
   $('diagnosticArchive').hidden=mode!=='diagnostics';$('typeFilter').hidden=mode!=='diagnostics';
@@ -462,4 +552,4 @@ function changeMode(next) {
   $('viewTitle').textContent=mode==='alerts' ? 'Alert inbox' : 'Diagnostic archive';refresh(true);
 }
 $('alertsTab').onclick=()=>changeMode('alerts');$('diagnosticsTab').onclick=()=>changeMode('diagnostics');
-refresh();setInterval(()=>refresh(),5000);setInterval(()=>renderHeartbeat(),1000);
+refreshAll();setInterval(()=>refreshAll(),5000);setInterval(()=>renderHeartbeat(),1000);

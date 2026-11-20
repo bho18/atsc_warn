@@ -806,3 +806,47 @@ registry pull verification are performed through the existing container workflow
   investigation; ownership keys are not persisted across attempts. Bounded device
   calls/cleanup can finish after the optional duration budget. Image publication
   and registry pull are verified separately from these offline results.
+
+## Alerts connection investigation (November 20, 2026)
+
+- `./scripts/validate.sh` passed with 226 tests, Ruff lint/format, strict mypy,
+  and two CRC-valid messages from the reconstructed replay. The existing
+  Starlette/httpx deprecation warning remains.
+- CLI replay into an isolated archive returned nine deliveries, six alert cards
+  and one cancellation through the API. With only diagnostics in the synthetic
+  live session, health showed a recent heartbeat and tuner 1 with an 8-VSB lock.
+  The live inbox returned HTTP 200 with zero cards.
+- In Chromium, an alert with a synthetic expiry of
+  `9999-12-31T23:59:59-05:00` caused UTC conversion to raise `OverflowError`.
+  The inbox endpoint returned HTTP 500 while health and diagnostic deliveries
+  returned HTTP 200. Alerts showed Disconnected and cleared receiver health.
+  Switching to Diagnostics restored the heartbeat and RF lock. A separate
+  browser check confirmed that a cancellation-history HTTP 503 suppresses
+  the inbox even when its own request succeeds.
+- A temporary UTC conversion guard restored HTTP 200 and displayed the affected
+  record with unknown lifecycle. The ordinary active alert still appeared and
+  the affected record's original XML matched byte for byte.
+- In a synthetic archive with 40,000 extra heartbeat and Link Test deliveries
+  and one ordinary live alert, inbox, active-only and cancellation queries
+  completed in 24–31 ms on the cloud test machine (five requests per query).
+  This sample does not measure production disk, query load, or archive contents.
+- The investigation used loopback and synthetic data. The deployed image,
+  production logs and archive, and the reason tuner 1 was selected on the
+  ThinkCentre remain unverified. No application source or deployment was changed.
+
+## Independent Alerts and receiver-health refresh (November 20, 2026)
+
+- Frozen offline validation passed with 253 tests, Ruff lint/format, strict
+  mypy, and two CRC-valid messages in the reconstructed replay. All three
+  Compose configurations validated. The existing Starlette/httpx warning remains.
+- The replay API returned nine deliveries, six alert cards and one cancellation
+  from the two fixtures. The live inbox returned a successful empty result.
+- The Chromium lifecycle smoke test held the cancellation request pending,
+  returned cancellation HTTP 503 and inbox HTTP 500 independently, and failed the
+  health request separately. It verified continuing health updates, independent
+  results/errors, and successful recovery of the inbox and health display.
+- The API regression checks UTC conversion overflow and underflow. Both alert
+  records remain visible with unknown lifecycle and original XML bytes, while
+  the active filter returns the ordinary alert.
+- The tests used local synthetic data. The ThinkCentre deployment and physical
+  receiver were outside the test scope.

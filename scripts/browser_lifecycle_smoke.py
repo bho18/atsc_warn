@@ -7,6 +7,7 @@ import tempfile
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 from urllib.request import urlopen
 
 from playwright.sync_api import expect, sync_playwright
@@ -18,6 +19,96 @@ from tests.integration.test_alert_variants import companion
 from warnbridge.config import Config
 from warnbridge.storage.store import Store
 from warnbridge.transport.decoder import Decoder
+
+
+def check_panel_refresh(page, url):
+    held = []
+    fault = "hold_cancellations"
+    heartbeat_id = 1
+    health_offline = False
+
+    def alerts(route):
+        cancellation = parse_qs(urlparse(route.request.url).query).get("cancellations") == ["true"]
+        if cancellation and fault == "hold_cancellations":
+            held.append(route)
+        elif not cancellation and fault == "inbox":
+            route.fulfill(status=500)
+        else:
+            route.continue_()
+
+    def health(route):
+        if health_offline:
+            route.abort()
+            return
+        response = route.fetch()
+        data = response.json()
+        data["rf_tuner"] = "locked"
+        data["receiver"] = {
+            "host": "test-device",
+            "tuner": 1,
+            "fields": {"ch": "auto:7", "lock": "8vsb"},
+            "age_seconds": 1,
+            "error": None,
+        }
+        data["connection"].update(
+            state="recent",
+            age_seconds=1,
+            last_heartbeat={
+                "id": heartbeat_id,
+                "source": "live_hdhomerun",
+                "received_at": datetime.now(UTC).isoformat(),
+            },
+        )
+        route.fulfill(response=response, json=data)
+
+    page.route("**/api/v1/health", health)
+    page.route("**/api/v1/alerts?*", alerts)
+    page.goto(url)
+    expect(page.locator(".alert-card")).to_have_count(3)
+    expect(page.locator("#heartbeat")).to_have_text("Live heartbeat")
+    expect(page.locator("#rf")).to_have_text("8-VSB locked")
+    expect(page.locator("#rfMeta")).to_contain_text("tuner 1")
+    expect(page.locator("#connection")).to_contain_text("Local archive connected")
+
+    page.locator("#cancellationSummary").click()
+    fault = "inbox"
+    assert held, "expected the cancellation request to remain pending"
+    for route in held:
+        route.fulfill(status=503)
+    expect(page.locator("#cancellationError")).to_contain_text("Cancellation history unavailable")
+    expect(page.locator(".alert-card")).to_have_count(3)
+    expect(page.locator("#heartbeat")).to_have_text("Live heartbeat")
+    expect(page.locator("#archiveError")).to_be_hidden()
+
+    heartbeat_id = 2
+    refresh = page.get_by_role("button", name="Refresh", exact=True)
+    refresh.click()
+    expect(page.locator("#archiveError")).to_contain_text("Alert inbox unavailable")
+    expect(page.locator(".alert-card")).to_have_count(0)
+    expect(page.locator("#cancellationSummary")).to_have_text("Cancellation history · 0")
+    expect(page.locator("#cancellationError")).to_be_hidden()
+    expect(page.locator("#heartbeatDot")).to_have_attribute("data-observation", "2")
+    expect(page.locator("#rf")).to_have_text("8-VSB locked")
+    expect(page.locator("#connection")).to_contain_text("Local archive connected")
+
+    heartbeat_id = 3
+    expect(page.locator("#heartbeatDot")).to_have_attribute("data-observation", "3", timeout=10000)
+    expect(page.locator("#archiveError")).to_be_visible()
+
+    fault = ""
+    health_offline = True
+    refresh.click()
+    expect(page.locator("#connection")).to_contain_text("Disconnected")
+    expect(page.locator("#heartbeat")).to_have_text("Connection unknown")
+    expect(page.locator("#archiveError")).to_be_hidden()
+    expect(page.locator(".alert-card")).to_have_count(3)
+    health_offline = False
+    refresh.click()
+    expect(page.locator("#heartbeat")).to_have_text("Live heartbeat")
+    page.locator("#cancellationSummary").click()
+    page.unroute("**/api/v1/health", health)
+    page.unroute("**/api/v1/alerts?*", alerts)
+
 
 with tempfile.TemporaryDirectory(prefix="warnbridge-browser-") as directory:
     root = Path(directory)
@@ -84,7 +175,7 @@ with tempfile.TemporaryDirectory(prefix="warnbridge-browser-") as directory:
                     'fill="#fafaf5"/></svg>',
                 ),
             )
-            page.goto("http://127.0.0.1:8097")
+            check_panel_refresh(page, "http://127.0.0.1:8097")
             cards = page.locator(".alert-card")
             expect(cards).to_have_count(3)
             original_card = cards.filter(has_text="Original alert")
@@ -213,6 +304,6 @@ with tempfile.TemporaryDirectory(prefix="warnbridge-browser-") as directory:
         server.terminate()
         server.wait(timeout=10)
 print(
-    "Browser lifecycle passed: badges, cancellation content, all-clear Alert, "
-    "Unicode, failure download, mobile."
+    "Browser lifecycle passed: independent health and alert refresh, badges, "
+    "cancellation content, all-clear Alert, Unicode, failure download, mobile."
 )

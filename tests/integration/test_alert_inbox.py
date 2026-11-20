@@ -69,6 +69,30 @@ def test_unknown_cmac_status_is_not_presented_as_actual(tmp_path):
         assert all(m["alert"]["status"] is None for m in unknown["items"])
 
 
+def test_out_of_range_utc_conversion_does_not_break_alert_inbox(tmp_path):
+    config = Config(database=str(tmp_path / "utc-overflow.db"))
+    now = datetime.now(UTC)
+    sent = (now - timedelta(hours=1)).isoformat()
+    expires = (now + timedelta(hours=1)).isoformat()
+    originals = {
+        "current": cap("current", sent=sent, expires=expires),
+        "overflow": cap("overflow", sent=sent, expires="9999-12-31T23:59:59-05:00"),
+        "underflow": cap("underflow", sent="0001-01-01T00:00:00+05:00", expires=expires),
+    }
+    for body in originals.values():
+        ingest(config, wrap(body))
+    with TestClient(create_app(config)) as api:
+        inbox = api.get("/api/v1/alerts").json()
+        assert inbox["total"] == 3
+        for item in inbox["items"]:
+            identifier = item["protocol_identifier"]
+            expected = "active" if identifier == "current" else "unknown"
+            assert item["alert"]["lifecycle"] == expected
+            assert api.get(f"/api/v1/messages/{item['id']}/raw").content == originals[identifier]
+        active = api.get("/api/v1/alerts?lifecycle=active").json()
+        assert [item["protocol_identifier"] for item in active["items"]] == ["current"]
+
+
 def test_out_of_order_cap_references_are_source_scoped_and_not_overwrites(tmp_path):
     config = Config(database=str(tmp_path / "lifecycle.db"))
     cancel = cap("demo-cancel", "Cancel", references=REF, sent="2026-11-12T01:02:00Z")

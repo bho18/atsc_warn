@@ -34,7 +34,7 @@ def utc_time(value: str) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         return parsed.astimezone(UTC) if parsed.tzinfo else None
-    except ValueError:
+    except (ValueError, OverflowError):
         return None
 
 

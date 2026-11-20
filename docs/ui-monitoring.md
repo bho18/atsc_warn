@@ -40,8 +40,10 @@ The connection indicator pulses once on each newly observed, fresh **live**
 heartbeat delivery. It does not pulse on every UI refresh or on imported/replay
 heartbeats, even when a replay retains arrival timestamps. It shows overdue after
 `heartbeat_stale_after` (default 45 seconds), stopped for a stopped receiver, waiting
-before a timed live observation, and unknown when API refresh fails. Age advances
-locally between polls, so an old green state cannot persist through a hung request.
+before a timed live observation, and unknown when the receiver health request fails.
+Health refreshes independently of the inbox, cancellation history and diagnostics.
+A failed panel displays its own error. Age advances locally between polls, so an
+old green state cannot persist through a hung request.
 Reduced-motion preferences disable the animation. RF lock, heartbeat freshness,
 Link Tests and authentication remain separate indicators.
 
