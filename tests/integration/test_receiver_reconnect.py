@@ -16,7 +16,8 @@ import pytest
 from tests.fixtures.golden import cmac, heartbeat
 from tests.unit.test_discovery import DEVICE, Duo
 from warnbridge import cli, pipeline
-from warnbridge.inputs import discovery
+from warnbridge.inputs import discovery, streams
+from warnbridge.inputs.hdhomerun import Tuner
 from warnbridge.inputs.streams import Chunk
 from warnbridge.storage.store import Store
 
@@ -295,6 +296,29 @@ def test_overall_duration_bounds_busy_retries_and_final_backoff(receiver, monkey
     assert receiver.clock.now == pytest.approx(5.5)
     assert len(receiver.selections) == 3
     assert all("set" not in call for call in receiver.duo.calls)
+
+
+def test_keepalive_send_failure_unwinds_owned_tuner_with_bounded_retry(
+    receiver, monkeypatch, capsys
+):
+    def fail(self, sock):
+        raise OSError("synthetic outbound UDP failure")
+
+    # Use the same clock in the public CLI and the real UDP iterator.
+    monkeypatch.setattr(streams, "time", SimpleNamespace(monotonic=receiver.clock.monotonic))
+    monkeypatch.setattr(Tuner, "send_keepalive", fail)
+    assert cli.run(receiver.args("--duration", "0.1")) == 2
+    _, stderr = messages(capsys)
+    assert "receiver UDP I/O failed" in stderr
+    assert receiver.selections == [None]
+    assert receiver.clock.waits == pytest.approx([0.1])
+    device = receiver.duo.tuners[0]
+    assert device.lock is None and device.target == "none" and device.channel == "none"
+    store = Store(receiver.database)
+    try:
+        assert [row["state"] for row in store.receivers()] == ["failed"]
+    finally:
+        store.close()
 
 
 def test_sigterm_interrupts_long_receiver_backoff(receiver, monkeypatch):

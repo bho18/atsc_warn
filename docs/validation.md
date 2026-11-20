@@ -848,5 +848,8 @@ registry pull verification are performed through the existing container workflow
 - The API regression checks UTC conversion overflow and underflow. Both alert
   records remain visible with unknown lifecycle and original XML bytes, while
   the active filter returns the ordinary alert.
+- The first publish run exposed an existing wall-clock race in the keepalive
+  failure test. The test now shares a simulated monotonic clock between the CLI
+  and UDP iterator and verifies the bounded wait and lease cleanup.
 - The tests used local synthetic data. The ThinkCentre deployment and physical
   receiver were outside the test scope.
