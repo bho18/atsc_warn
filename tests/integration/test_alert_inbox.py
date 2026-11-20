@@ -1,5 +1,8 @@
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
+from textwrap import dedent
 
 from fastapi.testclient import TestClient
 
@@ -91,6 +94,59 @@ def test_out_of_range_utc_conversion_does_not_break_alert_inbox(tmp_path):
             assert api.get(f"/api/v1/messages/{item['id']}/raw").content == originals[identifier]
         active = api.get("/api/v1/alerts?lifecycle=active").json()
         assert [item["protocol_identifier"] for item in active["items"]] == ["current"]
+
+
+def test_alert_grouping_with_repeated_long_messages_fits_small_temp_storage(tmp_path):
+    config = Config(database=str(tmp_path / "small-temp.db"))
+    body = cap().replace(b"Flood warning example", b"x" * 24500)
+    ingest(config, wrap(body))
+    store = Store(config.database)
+    try:
+        # Only delivery metadata matters to the grouping query. Reuse the content
+        # ID without copying the transport bytes into these synthetic observations.
+        with store.db:
+            store.db.execute(
+                "WITH RECURSIVE copies(i) AS (VALUES(1) UNION ALL "
+                "SELECT i+1 FROM copies WHERE i<512) "
+                "INSERT INTO observations(session_id,message_id,processed_at,chunk_index,"
+                "header,body,assembled,raw_ts,offsets,state) "
+                "SELECT session_id,message_id,processed_at,i,header,x'',x'',x'',offsets,state "
+                "FROM (SELECT * FROM observations LIMIT 1) CROSS JOIN copies"
+            )
+    finally:
+        store.close()
+
+    # Apply the file limit only to a separate read-only process. This caps SQLite
+    # sort files without limiting the existing archive or changing the OS mounts.
+    reader = dedent(
+        """
+        import resource
+        import signal
+        import sys
+
+        from warnbridge.storage.store import Store
+
+        store = Store(sys.argv[1], readonly=True)
+        try:
+            store.db.execute("PRAGMA temp_store=FILE")
+            signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+            resource.setrlimit(resource.RLIMIT_FSIZE, (1024 * 1024, 1024 * 1024))
+            data = store.alerts()
+            assert data["total"] == 1
+            assert data["items"][0]["group_delivery_count"] == 513
+            assert store.alerts(cancellations=True)["total"] == 0
+        finally:
+            store.close()
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", reader, config.database],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_out_of_order_cap_references_are_source_scoped_and_not_overwrites(tmp_path):

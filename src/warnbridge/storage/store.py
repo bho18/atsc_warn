@@ -555,7 +555,8 @@ class Store:
     ) -> list[list[str]]:
         """Group only an explicit, unique CMAC -> CAP identity within a source group.
 
-        Select identity metadata, not complete parsed trees/raw bytes, for the archive.
+        Aggregate delivery metadata before reading message fields. The deployment's
+        small SQLite temp filesystem cannot hold a copy of the parsed tree per delivery.
         Pagination happens after grouping so companions cannot split across pages.
         """
         source_sql, source_params = self.source_filter(source)
@@ -572,6 +573,14 @@ class Store:
                 f"WHERE json_extract(j.value,'$.tag')='{{cmac:2.0}}{cmac_name}') END AS {cap_name}"
             )
         rows = self.db.execute(
+            "WITH delivery_metadata AS ("
+            "SELECT candidate.id AS message_id,max(o.id) AS latest,"
+            "group_concat(DISTINCT s.source) AS sources "
+            # Keep the message ID as the outer scan for grouping in index order.
+            "FROM messages candidate CROSS JOIN observations o ON o.message_id=candidate.id "
+            "CROSS JOIN sessions s ON s.id=o.session_id "
+            "WHERE candidate.classification NOT IN ('heartbeat','cmac_link_test') "
+            f"AND {source_sql} GROUP BY candidate.id) "
             "SELECT m.id,m.protocol," + ",".join(columns) + ","
             "CASE WHEN m.protocol='CAP' THEN json_extract(m.fields,'$.status') "
             "WHEN json_array_length(m.fields,'$.CMAC_status')=1 "
@@ -579,13 +588,10 @@ class Store:
             "CASE WHEN m.protocol='CAP' THEN json_extract(m.fields,'$.msgType') "
             "WHEN json_array_length(m.fields,'$.CMAC_message_type')=1 "
             "THEN json_extract(m.fields,'$.CMAC_message_type[0]') END AS message_type,"
-            "max(o.id) AS latest,group_concat(DISTINCT s.source) AS sources "
-            "FROM messages m JOIN observations o ON o.message_id=m.id "
-            "JOIN sessions s ON s.id=o.session_id "
-            "WHERE m.classification NOT IN ('heartbeat','cmac_link_test') "
-            f"AND {source_sql} GROUP BY m.id ORDER BY latest DESC,m.id",
+            "d.latest,d.sources FROM delivery_metadata d JOIN messages m ON m.id=d.message_id",
             source_params,
         ).fetchall()
+        rows.sort(key=lambda row: (-row["latest"], row["id"]))
         by_id = {row["id"]: row for row in rows}
 
         def identity(row: sqlite3.Row) -> tuple[str, str, str, str] | None:

@@ -853,3 +853,21 @@ registry pull verification are performed through the existing container workflow
   and UDP iterator and verifies the bounded wait and lease cleanup.
 - The tests used local synthetic data. The ThinkCentre deployment and physical
   receiver were outside the test scope.
+
+## Alert query temporary storage (November 20, 2026)
+
+- The operator supplied a traceback showing `SQLITE_FULL` in alert grouping.
+  With SQLite 3.46.1 in the published image, an isolated 16 MiB `/tmp` and a
+  1.3 MB synthetic archive (15 alert contents, 100 deliveries each) reproduced
+  HTTP 500 for the live inbox and cancellation history while health returned 200.
+- With the revised query in the same image and test setup, both routes returned
+  HTTP 200, as did the all-source inbox. A second dataset with 400 distinct
+  messages also grouped successfully. The revised SQLite query plan groups
+  delivery IDs in index order before reading the parsed message fields.
+- A regression with 513 deliveries of one long alert and a 1 MiB SQLite
+  temporary file limit fails with the previous query and passes with the fix.
+  Full offline validation passed with 254 tests, Ruff lint/format, strict mypy,
+  and the two-message reconstructed replay. All Compose configurations and the
+  Chromium lifecycle smoke check passed. The Starlette/httpx warning remains.
+- The query change requires no archive migration or Compose layout update.
+  The original archive was only observed through the supplied traceback.
