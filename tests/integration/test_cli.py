@@ -87,6 +87,7 @@ def test_live_listen_connects_outputs_immediately_and_filters_only_warn(
     from tests.unit.test_inputs import Device as MockTuner
     from warnbridge import cli
     from warnbridge.inputs.hdhomerun import Tuner
+    from warnbridge.inputs.streams import udp_chunks
 
     device = MockTuner()
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
@@ -111,7 +112,14 @@ def test_live_listen_connects_outputs_immediately_and_filters_only_warn(
         with Tuner(active, runner) as tuner:
             yield tuner
 
+    def receive_one_datagram(sock, stop, **kwargs):
+        for chunk in udp_chunks(sock, stop, **kwargs):
+            yield chunk
+            if chunk.data:
+                return
+
     monkeypatch.setattr(cli, "open_receiver", connect)
+    monkeypatch.setattr(cli, "udp_chunks", receive_one_datagram)
     args = cli.parser().parse_args(
         [
             "listen",
@@ -122,7 +130,7 @@ def test_live_listen_connects_outputs_immediately_and_filters_only_warn(
             "--udp-port",
             str(port),
             "--duration",
-            ".01",
+            "5",
         ]
     )
     assert cli.run(args) == 0

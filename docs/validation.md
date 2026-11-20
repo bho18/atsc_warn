@@ -869,5 +869,8 @@ registry pull verification are performed through the existing container workflow
   Full offline validation passed with 254 tests, Ruff lint/format, strict mypy,
   and the two-message reconstructed replay. All Compose configurations and the
   Chromium lifecycle smoke check passed. The Starlette/httpx warning remains.
+- The first release attempt exposed an unrelated 10 ms deadline in a native
+  receiver test. The test now uses its real loopback datagram to end reception
+  and retains a five-second watchdog for missing traffic.
 - The query change requires no archive migration or Compose layout update.
   The original archive was only observed through the supplied traceback.
